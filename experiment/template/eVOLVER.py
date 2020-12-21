@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+##### IMPORTANT #####
+# Read the README.md file before touching this file.
+
 import os
 import sys
 import time
@@ -14,10 +17,12 @@ from scipy import stats
 from socketIO_client import SocketIO, BaseNamespace
 
 import custom_script
-from custom_script import EXP_NAME, PUMP_CAL_FILE
-from custom_script import EVOLVER_IP, EVOLVER_PORT, OPERATION_MODE
+from custom_script import EVOLVER_IP, EVOLVER_PORT
 from custom_script import STIR_INITIAL, TEMP_INITIAL
 
+OPERATION_MODE = None
+EXP_NAME = None
+PUMP_CAL_FILE = None
 # Should not be changed
 # vials to be considered/excluded should be handled
 # inside the custom functions
@@ -537,6 +542,12 @@ class EvolverNamespace(BaseNamespace):
             custom_script.turbidostat(self, data, vials, elapsed_time)
         elif OPERATION_MODE == 'chemostat':
             custom_script.chemostat(self, data, vials, elapsed_time)
+        elif OPERATION_MODE == 'morbidostat':
+            pass
+        elif OPERATION_MODE == 'timed_morbidostat':
+            pass
+        elif OPERATION_MODE == 'old_morbidostat':
+            pass
         else:
             # try to load the user function
             # if failing report to user
@@ -555,9 +566,10 @@ class EvolverNamespace(BaseNamespace):
         self.stop_all_pumps()
 
 def get_options():
-    description = 'Run an eVOLVER experiment from the command line'
+    description = 'Custom eVOLVER script for Toprak Lab. (As a last resort) contact furkancemaltoprak@gmail.com for assistance.'
+    help = 'You should specify regime, tubeVolume, cycleTime, pumpDuration, and suctionDuraction.'
     parser = argparse.ArgumentParser(description=description)
-
+    # Usage information for our lovely labmates
     parser.add_argument('--always-yes', action='store_true',
                         default=False,
                         help='Answer yes to all questions '
@@ -577,11 +589,23 @@ def get_options():
                            default=False,
                            help='Disable logging to file entirely')
 
+    parser.add_argument('--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
+    parser.add_argument('--algo', help='Whether you want to use chemostat/turbidostat/morbidostat/old_morbidostat/timed_morbidostat')
+    parser.add_argument('--volume', help="The capacity of the vials in mL, determined by vial cap straw length", type=int)
+    parser.add_argument('--lower_threshold', help="Lower OD threshold for all vials", type=float)
+    parser.add_argument('--upper_threshold', help="Upper OD threshold for all vials", type=float)
+    parser.add_argument('--to_avg', help="Number of values to calculate the OD average", type=int)
+    # parser.add_argument('--pump_duration', help="Duration of pump, in seconds", type=int)
+    # parser.add_argument('--suck_duration', help="Duration of suction pump, in seconds", type=int)
+    # parser.add_argument('--cycle_duration', help="Duration of each cycle, in minutes.")
+
     return parser.parse_args()
 
 if __name__ == '__main__':
     options = get_options()
-
+    OPERATION_MODE = options.algo
+    EXP_NAME = options.exp_name
+    print(OPERATION_MODE)
     #changes terminal tab title in OSX
     print('\x1B]0;eVOLVER EXPERIMENT: PRESS Ctrl-C TO PAUSE\x07')
 
