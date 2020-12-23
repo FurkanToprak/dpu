@@ -24,16 +24,12 @@ options = None
 OPERATION_MODE = None
 EXP_NAME = None
 PUMP_CAL_FILE = None
-# Should not be changed
-# vials to be considered/excluded should be handled
-# inside the custom functions
-VIALS = [x for x in range(16)]
-
 SAVE_PATH = os.path.dirname(os.path.realpath(__file__))
-EXP_DIR = os.path.join(SAVE_PATH, EXP_NAME)
+EXP_DIR = None
 OD_CAL_PATH = os.path.join(SAVE_PATH, 'od_cal.json')
 TEMP_CAL_PATH = os.path.join(SAVE_PATH, 'temp_cal.json')
-
+# Should not be changed. Vials to be considered/excluded should be handled inside the custom functions.
+VIALS = [x for x in range(16)]
 SIGMOID = 'sigmoid'
 LINEAR = 'linear'
 THREE_DIMENSION = '3d'
@@ -41,6 +37,7 @@ THREE_DIMENSION = '3d'
 logger = logging.getLogger('eVOLVER')
 
 EVOLVER_NS = None
+
 
 class EvolverNamespace(BaseNamespace):
     start_time = None
@@ -90,19 +87,19 @@ class EvolverNamespace(BaseNamespace):
         elif self.OD_initial is None:
             self.OD_initial = np.zeros(len(VIALS))
         data['transformed']['od'] = (data['transformed']['od'] -
-                                        self.OD_initial)
+                                     self.OD_initial)
         # save data
         self.save_data(data['transformed']['od'], elapsed_time,
-                        VIALS, 'OD')
+                       VIALS, 'OD')
         self.save_data(data['transformed']['temp'], elapsed_time,
-                        VIALS, 'temp')
+                       VIALS, 'temp')
 
         for param in od_cal['params']:
             self.save_data(data['data'].get(param, []), elapsed_time,
-                        VIALS, param + '_raw')
+                           VIALS, param + '_raw')
         for param in temp_cal['params']:
             self.save_data(data['data'].get(param, []), elapsed_time,
-                        VIALS, param + '_raw')
+                           VIALS, param + '_raw')
         # run custom functions
         self.custom_functions(data, VIALS, elapsed_time)
         # save variables
@@ -127,15 +124,16 @@ class EvolverNamespace(BaseNamespace):
                             os.makedirs(os.path.join(EXP_DIR, param + '_raw'))
                             for x in range(len(fit['coefficients'])):
                                 exp_str = "Experiment: {0} vial {1}, {2}".format(EXP_NAME,
-                                        x,
-                                        time.strftime("%c"))
-                                self._create_file(x, param + '_raw', defaults=[exp_str])
+                                                                                 x,
+                                                                                 time.strftime("%c"))
+                                self._create_file(
+                                    x, param + '_raw', defaults=[exp_str])
                     break
 
     def request_calibrations(self):
         logger.debug('requesting active calibrations')
         self.emit('getactivecal',
-                  {}, namespace = '/dpu-evolver')
+                  {}, namespace='/dpu-evolver')
 
     def transform_data(self, data, vials, od_cal, temp_cal):
         od_data_2 = None
@@ -163,7 +161,7 @@ class EvolverNamespace(BaseNamespace):
 
         temps = []
         for x in vials:
-            file_name =  "vial{0}_temp_config.txt".format(x)
+            file_name = "vial{0}_temp_config.txt".format(x)
             file_path = os.path.join(EXP_DIR, 'temp_config', file_name)
             temp_set_data = np.genfromtxt(file_path, delimiter=',')
             temp_set = temp_set_data[len(temp_set_data)-1][1]
@@ -172,13 +170,13 @@ class EvolverNamespace(BaseNamespace):
             temp_coefficients = temp_cal['coefficients'][x]
             try:
                 if od_cal['type'] == SIGMOID:
-                    #convert raw photodiode data into ODdata using calibration curve
+                    # convert raw photodiode data into ODdata using calibration curve
                     od_data[x] = np.real(od_coefficients[2] -
-                                        ((np.log10((od_coefficients[1] -
-                                                    od_coefficients[0]) /
+                                         ((np.log10((od_coefficients[1] -
+                                                     od_coefficients[0]) /
                                                     (float(od_data[x]) -
-                                                    od_coefficients[0])-1)) /
-                                                    od_coefficients[3]))
+                                                     od_coefficients[0])-1)) /
+                                          od_coefficients[3]))
                     if not np.isfinite(od_data[x]):
                         od_data[x] = 'NaN'
                         logger.debug('OD from vial %d: %s' % (x, od_data[x]))
@@ -186,11 +184,11 @@ class EvolverNamespace(BaseNamespace):
                         logger.debug('OD from vial %d: %.3f' % (x, od_data[x]))
                 elif od_cal['type'] == THREE_DIMENSION:
                     od_data[x] = np.real(od_coefficients[0] +
-                                        (od_coefficients[1]*od_data[x]) +
-                                        (od_coefficients[2]*od_data_2[x]) +
-                                        (od_coefficients[3]*(od_data[x]**2)) +
-                                        (od_coefficients[4]*od_data[x]*od_data_2[x]) +
-                                        (od_coefficients[5]*(od_data_2[x]**2)))
+                                         (od_coefficients[1]*od_data[x]) +
+                                         (od_coefficients[2]*od_data_2[x]) +
+                                         (od_coefficients[3]*(od_data[x]**2)) +
+                                         (od_coefficients[4]*od_data[x]*od_data_2[x]) +
+                                         (od_coefficients[5]*(od_data_2[x]**2)))
                 else:
                     logger.error('OD calibration not of supported type!')
                     od_data[x] = 'NaN'
@@ -201,22 +199,23 @@ class EvolverNamespace(BaseNamespace):
             try:
                 temp_data[x] = (float(temp_data[x]) *
                                 temp_coefficients[0]) + temp_coefficients[1]
-                logger.debug('temperature from vial %d: %.3f' % (x, temp_data[x]))
+                logger.debug('temperature from vial %d: %.3f' %
+                             (x, temp_data[x]))
             except ValueError:
                 print("Temp Read Error")
                 logger.error('temperature read error for vial %d, setting to NaN'
-                            % x)
-                temp_data[x]  = 'NaN'
+                             % x)
+                temp_data[x] = 'NaN'
             try:
                 set_temp_data[x] = (float(set_temp_data[x]) *
                                     temp_coefficients[0]) + temp_coefficients[1]
                 logger.debug('set_temperature from vial %d: %.3f' % (x,
-                                                                set_temp_data[x]))
+                                                                     set_temp_data[x]))
             except ValueError:
                 print("Set Temp Read Error")
                 logger.error('set temperature read error for vial %d, setting to NaN'
-                            % x)
-                set_temp_data[x]  = 'NaN'
+                             % x)
+                set_temp_data[x] = 'NaN'
 
         temps = np.array(temps)
         # update temperatures only if difference with expected
@@ -246,25 +245,25 @@ class EvolverNamespace(BaseNamespace):
         data['transformed']['temp'] = temp_data
         return data
 
-    def update_stir_rate(self, stir_rates, immediate = False):
+    def update_stir_rate(self, stir_rates, immediate=False):
         data = {'param': 'stir', 'value': stir_rates,
                 'immediate': immediate, 'recurring': True}
         logger.debug('stir rate command: %s' % data)
-        self.emit('command', data, namespace = '/dpu-evolver')
+        self.emit('command', data, namespace='/dpu-evolver')
 
-    def update_temperature(self, temperatures, immediate = False):
+    def update_temperature(self, temperatures, immediate=False):
         data = {'param': 'temp', 'value': temperatures,
                 'immediate': immediate, 'recurring': True}
         logger.debug('temperature command: %s' % data)
-        self.emit('command', data, namespace = '/dpu-evolver')
+        self.emit('command', data, namespace='/dpu-evolver')
 
     def fluid_command(self, MESSAGE):
         logger.debug('fluid command: %s' % MESSAGE)
         command = {'param': 'pump', 'value': MESSAGE,
-                   'recurring': False ,'immediate': True}
+                   'recurring': False, 'immediate': True}
         self.emit('command', command, namespace='/dpu-evolver')
 
-    def update_chemo(self, data, vials, bolus_in_s, period_config, immediate = False):
+    def update_chemo(self, data, vials, bolus_in_s, period_config, immediate=False):
         current_pump = data['config']['pump']['value']
 
         MESSAGE = {'fields_expected_incoming': 49,
@@ -273,7 +272,6 @@ class EvolverNamespace(BaseNamespace):
                    'immediate': immediate,
                    'value': ['--'] * 48,
                    'param': 'pump'}
-
         for x in vials:
             # stop pumps if period is zero
             if period_config[x] == 0:
@@ -282,15 +280,16 @@ class EvolverNamespace(BaseNamespace):
                 # efflux
                 MESSAGE['value'][x + 16] = '0|0'
             else:
-                # influx
-                MESSAGE['value'][x] = '%.2f|%d' % (bolus_in_s[x], period_config[x])
-                # efflux
-                MESSAGE['value'][x + 16] = '%.2f|%d' % (bolus_in_s[x] * 2,
-                                                        period_config[x])
+                # media
+                MESSAGE['value'][x] = '%.2f|%d' % (
+                    bolus_in_s[x], period_config[x])
+        # suction
+        MESSAGE['value'][-1] = '%.2f|%d' % (max(bolus_in_s) * 2,
+                                            max(period_config))
 
         if MESSAGE['value'] != current_pump:
             logger.info('updating chemostat: %s' % MESSAGE)
-            self.emit('command', MESSAGE, namespace = '/dpu-evolver')
+            self.emit('command', MESSAGE, namespace='/dpu-evolver')
 
     def stop_all_pumps(self, ):
         data = {'param': 'pump',
@@ -298,14 +297,14 @@ class EvolverNamespace(BaseNamespace):
                 'recurring': False,
                 'immediate': True}
         logger.info('stopping all pumps')
-        self.emit('command', data, namespace = '/dpu-evolver')
+        self.emit('command', data, namespace='/dpu-evolver')
 
     def _create_file(self, vial, param, directory=None, defaults=None):
         if defaults is None:
             defaults = []
         if directory is None:
             directory = param
-        file_name =  "vial{0}_{1}.txt".format(vial, param)
+        file_name = "vial{0}_{1}.txt".format(vial, param)
         file_path = os.path.join(EXP_DIR, directory, file_name)
         text_file = open(file_path, "w")
         for default in defaults:
@@ -322,7 +321,8 @@ class EvolverNamespace(BaseNamespace):
                 exp_continue = 'y'
             else:
                 while exp_continue not in ['y', 'n']:
-                    exp_continue = input('Continue from existing experiment? (y/n): ')
+                    exp_continue = input(
+                        'Continue from existing experiment? (y/n): ')
         else:
             exp_continue = 'n'
 
@@ -334,15 +334,16 @@ class EvolverNamespace(BaseNamespace):
                 else:
                     while exp_overwrite not in ['y', 'n']:
                         exp_overwrite = input('Directory aleady exists. '
-                                            'Overwrite with new experiment? (y/n): ')
+                                              'Overwrite with new experiment? (y/n): ')
                 logger.info('data directory already exists')
                 if exp_overwrite == 'y':
                     logger.info('deleting existing data directory')
                     shutil.rmtree(EXP_DIR)
                 else:
                     print('Change experiment name in custom_script.py '
-                        'and then restart...')
-                    logger.warning('not deleting existing data directory, exiting')
+                          'and then restart...')
+                    logger.warning(
+                        'not deleting existing data directory, exiting')
                     sys.exit(1)
 
             start_time = time.time()
@@ -360,7 +361,7 @@ class EvolverNamespace(BaseNamespace):
             for x in vials:
                 exp_str = "Experiment: {0} vial {1}, {2}".format(EXP_NAME,
                                                                  x,
-                                                           time.strftime("%c"))
+                                                                 time.strftime("%c"))
                 # make OD file
                 self._create_file(x, 'OD', defaults=[exp_str])
                 # make temperature data file
@@ -403,20 +404,20 @@ class EvolverNamespace(BaseNamespace):
                 self.OD_initial = np.zeros(len(vials))
         else:
             # load existing experiment
-            pickle_name =  "{0}.pickle".format(EXP_NAME)
+            pickle_name = "{0}.pickle".format(EXP_NAME)
             pickle_path = os.path.join(EXP_DIR, pickle_name)
             logger.info('loading previous experiment data: %s' % pickle_path)
             with open(pickle_path, 'rb') as f:
-                loaded_var  = pickle.load(f)
+                loaded_var = pickle.load(f)
             x = loaded_var
             start_time = x[0]
             self.OD_initial = x[1]
 
         # copy current custom script to txt file
         backup_filename = '{0}_{1}.txt'.format(EXP_NAME,
-                                            time.strftime('%y%m%d_%H%M'))
+                                               time.strftime('%y%m%d_%H%M'))
         shutil.copy('custom_script.py', os.path.join(EXP_DIR,
-                                                    backup_filename))
+                                                     backup_filename))
         logger.info('saved a copy of current custom_script.py as %s' %
                     backup_filename)
 
@@ -435,7 +436,7 @@ class EvolverNamespace(BaseNamespace):
         if len(data) == 0:
             return
         for x in vials:
-            file_name =  "vial{0}_{1}.txt".format(x, parameter)
+            file_name = "vial{0}_{1}.txt".format(x, parameter)
             file_path = os.path.join(EXP_DIR, parameter, file_name)
             text_file = open(file_path, "a+")
             text_file.write("{0},{1}\n".format(elapsed_time, data[x]))
@@ -457,11 +458,11 @@ class EvolverNamespace(BaseNamespace):
             flow_rate = flow_calibration
         else:
             # Currently just implementing influx flow rate
-            flow_rate = flow_calibration[0,:]
+            flow_rate = flow_calibration[0, :]
         return flow_rate
 
     def calc_growth_rate(self, vial, gr_start, elapsed_time):
-        ODfile_name =  "vial{0}_OD.txt".format(vial)
+        ODfile_name = "vial{0}_OD.txt".format(vial)
         # Grab Data and make setpoint
         OD_path = os.path.join(EXP_DIR, 'OD', ODfile_name)
         OD_data = np.genfromtxt(OD_path, delimiter=',')
@@ -482,7 +483,7 @@ class EvolverNamespace(BaseNamespace):
         logger.debug('growth rate for vial %s: %.2f' % (vial, slope))
 
         # Save slope to file
-        file_name =  "vial{0}_gr.txt".format(vial)
+        file_name = "vial{0}_gr.txt".format(vial)
         gr_path = os.path.join(EXP_DIR, 'growthrate', file_name)
         text_file = open(gr_path, "a+")
         text_file.write("{0},{1}\n".format(elapsed_time, slope))
@@ -558,13 +559,14 @@ class EvolverNamespace(BaseNamespace):
                 func(self, data, vials, elapsed_time)
             except AttributeError:
                 logger.error('could not find function %s in custom_script.py' %
-                            OPERATION_MODE)
+                             OPERATION_MODE)
                 print('Could not find function %s in custom_script.py '
-                    '- Skipping user defined functions'%
-                    OPERATION_MODE)
+                      '- Skipping user defined functions' %
+                      OPERATION_MODE)
 
     def stop_exp(self):
         self.stop_all_pumps()
+
 
 def get_options():
     description = 'Custom eVOLVER script for Toprak Lab. (As a last resort) contact furkancemaltoprak@gmail.com for assistance.'
@@ -577,7 +579,7 @@ def get_options():
                              'overwrites existing data and blanks OD '
                              'measurements)')
     parser.add_argument('--log-name',
-                        default=os.path.join(EXP_DIR, 'evolver.log'),
+                        default='evolver.log',
                         help='Log file name directory (default: %(default)s)')
 
     log_nolog = parser.add_mutually_exclusive_group()
@@ -589,35 +591,95 @@ def get_options():
                            default=False,
                            help='Disable logging to file entirely')
     # Always necessary arguments
-    parser.add_argument('--algo', help='Whether you want to use chemostat/turbidostat/morbidostat/old_morbidostat/timed_morbidostat')
-    parser.add_argument('--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
-    parser.add_argument('--volume', help="The capacity of the vials in mL, determined by vial cap straw length", type=int)
-    parser.add_argument('--to_avg', help="Number of values to calculate the OD average", type=int)
-    parser.add_argument('--stir_initial', help="Initial stir speed (RPS)", type=int) # TODO: Find out units.
-    parser.add_argument('--temp_initial', help="Initial temperature (C).")
-    # Special cases per algo
-    algo = parser.parse_args().algo 
-    # Turbidostat arguments
-    if algo == 'turbidostat':
-        parser.add_argument('--lower_threshold', help="Lower OD threshold for all vials", type=float)
-        parser.add_argument('--upper_threshold', help="Upper OD threshold for all vials", type=float)
-        parser.add_argument('--time_out', help="Additional amount of time (sec) to run suction pump. Unlikely to change between experiments.", type=int)
-        parser.add_argument('--pump_wait', help="Minimum amount of time (min) to wait between pump events. Unlikely to change between experiments.", type=int)
-        parser.add_argument('--pump_for_max', help="Maximum amount of time (sec) that input pumps can run for. This is for overflow protection. Unlikely to change between experiments.", type=int)
-    elif algo == 'chemostat':
-        pass
-    # parser.add_argument('--pump_duration', help="Duration of pump, in seconds", type=int)
-    # parser.add_argument('--suck_duration', help="Duration of suction pump, in seconds", type=int)
-    # parser.add_argument('--cycle_duration', help="Duration of each cycle, in minutes.")
+    algo_options = ['chemostat', 'turbidostat',
+                    'morbidostat', 'timed_morbidostat', 'old_morbidostat']
+    parser.add_argument(
+        '--algo', help=f'Whether you want to use {algo_options.join('/')}')
+    parser.add_argument(
+        '--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
+    parser.add_argument(
+        '--vial_volume', help="The capacity of the vials in mL, determined by vial cap straw length", type=int)
+    parser.add_argument(
+        '--to_avg', help="Number of values to calculate the OD average", type=int)
+    parser.add_argument(
+        '--stir_initial', help="Initial stir speed (RPS)", type=int)
+    parser.add_argument(
+        '--temp_initial', help="Initial temperature (C).", type=int)
+    # Sanity check for required arguments
+    args = parser.parse_args()
+    if args.algo is None or not args.algo in algo_options:
+        print('Incorrect algorithm.')
+        exit(-1)
+    if args.exp_name is None or len(args.exp_name) == 0:
+        print('Specify experiment name.')
+        exit(-1)
+    if args.vial_volume is None or args.vial_volume <= 0:
+        print('Specify positive vial volume.')
+        exit(-1)
+    if args.to_avg is None:
+        print('Specify positive integer for to_avg')
+        exit(-1)
+    if args.stir_initial is None or args.stir_initial <= 0:
+        print('Specify positive integer for stir_inital')
+        exit(-1)
+    if args.temp_initial is None:
+        print('Specify integer for temp_initial')
+        exit(-1)
 
+    # Turbidostat arguments
+    if args.algo == 'turbidostat':
+        parser.add_argument('--lower_threshold',
+                            help="Lower OD threshold for all vials", type=float)
+        parser.add_argument('--upper_threshold',
+                            help="Upper OD threshold for all vials", type=float)
+        parser.add_argument(
+            '--time_out', help="Additional amount of time (sec) to run suction pump. Unlikely to change between experiments.", type=int)
+        parser.add_argument(
+            '--pump_wait', help="Minimum amount of time (min) to wait between pump events. Unlikely to change between experiments.", type=int)
+        parser.add_argument(
+            '--pump_for_max', help="Maximum amount of time (sec) that input pumps can run for. This is for overflow protection. Unlikely to change between experiments. Specify -1 for no maximum.", type=int)
+        # Sanity check for turbidostat args
+        args = parser.parse_args()
+        if args.lower_threshold is None or args.lower_threshold < 0:
+            print('Specify non-negative lower_threshold')
+            exit(-1)
+        if args.upper_threshold is None or args.upper_threshold < 0:
+            print('Specify non-negative lower_threshold')
+            exit(-1)
+    # Chemostat arguments
+    elif args.algo == 'chemostat':
+        parser.add_argument(
+            '--start_OD', help="~OD600, set to 0 to start chemostate dilutions at any positive OD", type=int)
+        parser.add_argument(
+            '--start_time', help="Amount of time (hours) Chemostat starts working after. Set 0 to start immediately", type=int)
+        parser.add_argument(
+            '--rate_config', help="Dilution rate ~ growth rate (1/hr, NOT mL/hr). Highly effects frequency of dilution rates.", type=float)
+        parser.add_argument(
+            '--bolus', help="Bolus volume (mL). Change with great caution. 0.2 is the absolute minimum. Unlikely to change between experiments. Highly effects frequency of dilution rates.", type=float)
+        # Sanity check for chemostat args
+        args = parser.parse_args()
+        if args.start_OD is None:
+            print('Specify non-negative start_OD')
+            exit(-1)
+        if args.start_time is None:
+            print('Specify non-negative start_time')
+            exit(-1)
+        if args.rate_config is None:
+            print('Specify rate_config.')
+            exit(-1)
+        if parser.bolus is None or parser.bolus < 0.2:
+            print('Specify bolus >= 0.2 mL')
+            exit(-1)
     return parser.parse_args()
+
 
 if __name__ == '__main__':
     options = get_options()
     OPERATION_MODE = options.algo
     EXP_NAME = options.exp_name
+    EXP_DIR = os.path.join(SAVE_PATH, EXP_NAME)
     print(OPERATION_MODE)
-    #changes terminal tab title in OSX
+    # changes terminal tab title in OSX
     print('\x1B]0;eVOLVER EXPERIMENT: PRESS Ctrl-C TO PAUSE\x07')
 
     # silence logging until experiment is initialized
@@ -643,7 +705,7 @@ if __name__ == '__main__':
         logging.basicConfig(format='%(asctime)s - %(name)s - [%(levelname)s] '
                             '- %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S',
-                            filename=options.log_name,
+                            filename=os.path.join(EXP_DIR, options.log_name),
                             level=level)
 
     reset_connection_timer = time.time()
@@ -678,7 +740,7 @@ if __name__ == '__main__':
             except KeyboardInterrupt:
                 print('Second Ctrl-C detected, shutting down')
                 logger.warning('second interrupt received, terminating '
-                                'experiment')
+                               'experiment')
                 EVOLVER_NS.stop_exp()
                 print('Experiment stopped, goodbye!')
                 logger.warning('experiment stopped, goodbye!')
