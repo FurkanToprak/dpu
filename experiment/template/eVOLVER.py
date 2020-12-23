@@ -646,6 +646,15 @@ def get_options():
         if args.upper_threshold is None or args.upper_threshold < 0:
             print('Specify non-negative lower_threshold')
             exit(-1)
+        if args.time_out is None or args.time_out < 0:
+            print('Specify non-negative time_out')
+            exit(-1)
+        if args.pump_wait is None or args.pump_wait < 0:
+            print('Specify non-negative pump_wait')
+            exit(-1)
+        if args.pump_for_max is None or args.pump_for_max < 0:
+            print('Specify non-negative pump_for_max')
+            exit(-1)
     # Chemostat arguments
     elif args.algo == 'chemostat':
         parser.add_argument(
