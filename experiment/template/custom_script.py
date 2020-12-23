@@ -26,14 +26,11 @@ PUMP_CAL_FILE = 'pump_cal.txt'
 
 
 def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
+    # TO_AVG, EXP_NAME, VIAL_VOLUME, TEMP_INITIAL, STIR_INITIAL
     # Likely variable between expts: TO_AVG, EXP_NAME, LOWER_THRESHOLD, UPPER_THRESHOLD,
-    # Unlikely to change between expts: TIME_OUT (), PUMP_WAIT, PUMP_FOR_MAX, TEMP_INITIAL, STIR_INITIAL, VIAL_VOLUME
+    # Unlikely to change between expts: TIME_OUT, PUMP_WAIT, PUMP_FOR_MAX
     OD_data = input_data['transformed']['od']
     # Identify pump calibration files, define initial values for temperature, stirring, volume, power settings
-    # degrees C, makes 16-value list
-    TEMP_INITIAL = [options.temp_initial] * tubeCount
-    # try 8,10,12 etc; makes 16-value list
-    STIR_INITIAL = [options.stir_initial] * tubeCount
     VOLUME = options.vial_volume  # mL, determined by vial cap straw length
     ##### USER DEFINED VARIABLES #####
     # vials is all 16, can set to different range (ex. [0,1,2,3]) to only trigger tstat on those vials
@@ -53,6 +50,8 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     time_out = options.time_out
     # (min) minimum amount of time to wait between pump events
     pump_wait = options.pump_wait
+    # (sec) max amount to run influx pumps
+    pump_max = options.pump_max
     ##### End of Turbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
     flow_rate = eVOLVER.get_flow_rate()  # read from calibration file
@@ -70,7 +69,6 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
         ODset = data[len(data)-1][1]
         ODsettime = data[len(data)-1][0]
         num_curves = len(data)/2
-
         file_name = "vial{0}_OD.txt".format(x)
         OD_path = os.path.join(save_path, EXP_NAME, 'OD', file_name)
         data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
@@ -110,8 +108,8 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                 time_in = - \
                     (np.log(lower_thresh[x]/average_OD)*VOLUME)/flow_rate[x]
                 # If pump_for_max is -1, then not set.
-                if options.pump_for_max < 0 and time_in > options.pump_for_max:
-                    time_in = options.pump_for_max
+                if pump_for_max < 0 and time_in > pump_for_max:
+                    time_in = pump_for_max
 
                 time_in = round(time_in, 2)
                 max_time_in = max(max_time_in, time_in)
@@ -144,7 +142,8 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 
 
 def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
-    # BOLUS,
+    # TO_AVG, EXP_NAME, VIAL_VOLUME
+    # BOLUS, RATE_CONFIG, START_OD, START_TIME
     OD_data = input_data['transformed']['od_90']
 
     ##### USER DEFINED VARIABLES #####
@@ -166,8 +165,10 @@ def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
 
     ##### Chemostat Settings #####
     # Tunable settings for bolus, etc. Unlikely to change between expts
-    bolus = options.bolus # mL, can be changed with great caution, 0.2 is absolute minimum. was 0.5
-
+    # mL, can be changed with great caution, 0.2 is absolute minimum. was 0.5
+    bolus = options.bolus
+    exp_name = options.exp_name
+    vial_volume = options.vial_volume
     ##### End of Chemostat Settings #####
 
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
@@ -185,7 +186,7 @@ def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
 
         # initialize OD and find OD path
         file_name = "vial{0}_OD.txt".format(x)
-        OD_path = os.path.join(save_path, EXP_NAME, 'OD', file_name)
+        OD_path = os.path.join(save_path, exp_name, 'OD', file_name)
         data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
         average_OD = 0
         # enough_ODdata = (len(data) > 7) #logical, checks to see if enough data points (couple minutes) for sliding window
@@ -199,7 +200,7 @@ def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
 
             # set chemostat config path and pull current state from file
             file_name = "vial{0}_chemo_config.txt".format(x)
-            chemoconfig_path = os.path.join(save_path, EXP_NAME,
+            chemoconfig_path = os.path.join(save_path, exp_name,
                                             'chemo_config', file_name)
             chemo_config = np.genfromtxt(chemoconfig_path, delimiter=',')
             # should t=0 initially, changes each time a new command is written to file
@@ -216,9 +217,10 @@ def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
                 bolus_in_s[x] = bolus/flow_rate[x]
 
                 # calculate the period (i.e. frequency of dilution events) based on user specified growth rate and bolus size
-                if rate_config[x] > 0:#TODO: understand period_config
+                if rate_config[x] > 0:  # TODO: understand period_config
                     # scale dilution rate by bolus size and volume
-                    period_config[x] = (3600*bolus)/((rate_config[x])*VOLUME)
+                    period_config[x] = (3600*bolus) / \
+                        ((rate_config[x])*vial_volume)
                 else:  # if no dilutions needed, then just loops with no dilutions
                     period_config[x] = 0
 
@@ -228,7 +230,9 @@ def chemostat(eVOLVER, input_data, vials, elapsed_time, options):
                                 % (x, period_config[x]))
                     # writes command to chemo_config file, for storage
                     text_file = open(chemoconfig_path, "a+")
-                    text_file.write("{0},{1},{2}\n".format(elapsed_time, (last_chemophase+1), period_config[x]))  # note that this changes chemophase
+                    # note that this changes chemophase
+                    text_file.write("{0},{1},{2}\n".format(
+                        elapsed_time, (last_chemophase+1), period_config[x]))
                     text_file.close()
         else:
             logger.debug('not enough OD measurements for vial %d' % x)

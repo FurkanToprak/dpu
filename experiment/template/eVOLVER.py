@@ -18,8 +18,9 @@ from socketIO_client import SocketIO, BaseNamespace
 
 import custom_script
 from custom_script import EVOLVER_IP, EVOLVER_PORT
-from custom_script import STIR_INITIAL, TEMP_INITIAL
 
+# See get_options() for config of options.
+options = None
 OPERATION_MODE = None
 EXP_NAME = None
 PUMP_CAL_FILE = None
@@ -387,7 +388,7 @@ class EvolverNamespace(BaseNamespace):
                                             "0,0,0"],
                                   directory='chemo_config')
 
-            self.update_stir_rate(STIR_INITIAL)
+            self.update_stir_rate(options.stir_initial)
 
             if always_yes:
                 exp_blank = 'y'
@@ -567,7 +568,6 @@ class EvolverNamespace(BaseNamespace):
 
 def get_options():
     description = 'Custom eVOLVER script for Toprak Lab. (As a last resort) contact furkancemaltoprak@gmail.com for assistance.'
-    help = 'You should specify regime, tubeVolume, cycleTime, pumpDuration, and suctionDuraction.'
     parser = argparse.ArgumentParser(description=description)
     # Usage information for our lovely labmates
     parser.add_argument('--always-yes', action='store_true',
@@ -588,13 +588,24 @@ def get_options():
     log_nolog.add_argument('--quiet', action='store_true',
                            default=False,
                            help='Disable logging to file entirely')
-
-    parser.add_argument('--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
+    # Always necessary arguments
     parser.add_argument('--algo', help='Whether you want to use chemostat/turbidostat/morbidostat/old_morbidostat/timed_morbidostat')
+    parser.add_argument('--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
     parser.add_argument('--volume', help="The capacity of the vials in mL, determined by vial cap straw length", type=int)
-    parser.add_argument('--lower_threshold', help="Lower OD threshold for all vials", type=float)
-    parser.add_argument('--upper_threshold', help="Upper OD threshold for all vials", type=float)
     parser.add_argument('--to_avg', help="Number of values to calculate the OD average", type=int)
+    parser.add_argument('--stir_initial', help="Initial stir speed (RPS)", type=int) # TODO: Find out units.
+    parser.add_argument('--temp_initial', help="Initial temperature (C).")
+    # Special cases per algo
+    algo = parser.parse_args().algo 
+    # Turbidostat arguments
+    if algo == 'turbidostat':
+        parser.add_argument('--lower_threshold', help="Lower OD threshold for all vials", type=float)
+        parser.add_argument('--upper_threshold', help="Upper OD threshold for all vials", type=float)
+        parser.add_argument('--time_out', help="Additional amount of time (sec) to run suction pump. Unlikely to change between experiments.", type=int)
+        parser.add_argument('--pump_wait', help="Minimum amount of time (min) to wait between pump events. Unlikely to change between experiments.", type=int)
+        parser.add_argument('--pump_for_max', help="Maximum amount of time (sec) that input pumps can run for. This is for overflow protection. Unlikely to change between experiments.", type=int)
+    elif algo == 'chemostat':
+        pass
     # parser.add_argument('--pump_duration', help="Duration of pump, in seconds", type=int)
     # parser.add_argument('--suck_duration', help="Duration of suction pump, in seconds", type=int)
     # parser.add_argument('--cycle_duration', help="Duration of each cycle, in minutes.")
