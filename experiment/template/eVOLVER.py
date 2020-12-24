@@ -23,9 +23,11 @@ from custom_script import EVOLVER_IP, EVOLVER_PORT
 options = None
 OPERATION_MODE = None
 EXP_NAME = None
-PUMP_CAL_FILE = None
+# tab delimited, mL/s with 16 influx pumps on first row, etc.
+PUMP_CAL_FILE = 'pump_cal.txt'
 SAVE_PATH = os.path.dirname(os.path.realpath(__file__))
 EXP_DIR = None
+TEMP_INITIAL = None
 OD_CAL_PATH = os.path.join(SAVE_PATH, 'od_cal.json')
 TEMP_CAL_PATH = os.path.join(SAVE_PATH, 'temp_cal.json')
 # Should not be changed. Vials to be considered/excluded should be handled inside the custom functions.
@@ -93,7 +95,6 @@ class EvolverNamespace(BaseNamespace):
                        VIALS, 'OD')
         self.save_data(data['transformed']['temp'], elapsed_time,
                        VIALS, 'temp')
-
         for param in od_cal['params']:
             self.save_data(data['data'].get(param, []), elapsed_time,
                            VIALS, param + '_raw')
@@ -541,9 +542,9 @@ class EvolverNamespace(BaseNamespace):
     def custom_functions(self, data, vials, elapsed_time):
         # load user script from custom_script.py
         if OPERATION_MODE == 'turbidostat':
-            custom_script.turbidostat(self, data, vials, elapsed_time)
+            custom_script.turbidostat(self, data, vials, elapsed_time, options)
         elif OPERATION_MODE == 'chemostat':
-            custom_script.chemostat(self, data, vials, elapsed_time)
+            custom_script.chemostat(self, data, vials, elapsed_time, options)
         elif OPERATION_MODE == 'morbidostat':
             pass
         elif OPERATION_MODE == 'timed_morbidostat':
@@ -594,9 +595,9 @@ def get_options():
     algo_options = ['chemostat', 'turbidostat',
                     'morbidostat', 'timed_morbidostat', 'old_morbidostat']
     parser.add_argument(
-        '--algo', help=f'Whether you want to use {algo_options.join('/')}')
+        '--algo', help='Whether you want to use ' + '/'.join(algo_options))
     parser.add_argument(
-        '--exp_name', help="The name of your experiment. Ex: 12_21_2099_Experiment")
+        '--exp_name', help="The name of your experiment. Include `expt` in the name for the experiment to be graphed. Ex: expt_12_23_2020")
     parser.add_argument(
         '--vial_volume', help="The capacity of the vials in mL, determined by vial cap straw length", type=int)
     parser.add_argument(
@@ -605,7 +606,29 @@ def get_options():
         '--stir_initial', help="Initial stir speed (RPS)", type=int)
     parser.add_argument(
         '--temp_initial', help="Initial temperature (C).", type=int)
-    # Sanity check for required arguments
+    # Turbidostat arguments
+    parser.add_argument('--lower_threshold',
+                        help="Lower OD threshold for all vials", type=float)
+    parser.add_argument('--upper_threshold',
+                        help="Upper OD threshold for all vials", type=float)
+    parser.add_argument(
+        '--time_out', help="Additional amount of time (sec) to run suction pump. Unlikely to change between experiments.", type=int)
+    parser.add_argument(
+        '--pump_wait', help="Minimum amount of time (min) to wait between pump events. Unlikely to change between experiments.", type=int)
+    parser.add_argument(
+        '--pump_for_max', help="Maximum amount of time (sec) that input pumps can run for. This is for overflow protection. Unlikely to change between experiments. Specify -1 for no maximum.", type=int)
+
+    # Chemostat arguments
+    parser.add_argument(
+        '--start_od', help="~OD600, set to 0 to start chemostate dilutions at any positive OD", type=float)
+    parser.add_argument(
+        '--start_time', help="Amount of time (hours) Chemostat starts working after. Set 0 to start immediately", type=float)
+    parser.add_argument(
+        '--rate_config', help="Dilution rate ~ growth rate (1/hr, NOT mL/hr). Highly effects frequency of dilution rates.", type=float)
+    parser.add_argument(
+        '--bolus', help="Bolus volume (mL). Change with great caution. 0.2 is the absolute minimum. Unlikely to change between experiments. Highly effects frequency of dilution rates.", type=float)
+    
+        # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
         print('Incorrect algorithm.')
@@ -626,20 +649,8 @@ def get_options():
         print('Specify integer for temp_initial')
         exit(-1)
 
-    # Turbidostat arguments
     if args.algo == 'turbidostat':
-        parser.add_argument('--lower_threshold',
-                            help="Lower OD threshold for all vials", type=float)
-        parser.add_argument('--upper_threshold',
-                            help="Upper OD threshold for all vials", type=float)
-        parser.add_argument(
-            '--time_out', help="Additional amount of time (sec) to run suction pump. Unlikely to change between experiments.", type=int)
-        parser.add_argument(
-            '--pump_wait', help="Minimum amount of time (min) to wait between pump events. Unlikely to change between experiments.", type=int)
-        parser.add_argument(
-            '--pump_for_max', help="Maximum amount of time (sec) that input pumps can run for. This is for overflow protection. Unlikely to change between experiments. Specify -1 for no maximum.", type=int)
         # Sanity check for turbidostat args
-        args = parser.parse_args()
         if args.lower_threshold is None or args.lower_threshold < 0:
             print('Specify non-negative lower_threshold')
             exit(-1)
@@ -657,17 +668,8 @@ def get_options():
             exit(-1)
     # Chemostat arguments
     elif args.algo == 'chemostat':
-        parser.add_argument(
-            '--start_OD', help="~OD600, set to 0 to start chemostate dilutions at any positive OD", type=int)
-        parser.add_argument(
-            '--start_time', help="Amount of time (hours) Chemostat starts working after. Set 0 to start immediately", type=int)
-        parser.add_argument(
-            '--rate_config', help="Dilution rate ~ growth rate (1/hr, NOT mL/hr). Highly effects frequency of dilution rates.", type=float)
-        parser.add_argument(
-            '--bolus', help="Bolus volume (mL). Change with great caution. 0.2 is the absolute minimum. Unlikely to change between experiments. Highly effects frequency of dilution rates.", type=float)
         # Sanity check for chemostat args
-        args = parser.parse_args()
-        if args.start_OD is None:
+        if args.start_od is None:
             print('Specify non-negative start_OD')
             exit(-1)
         if args.start_time is None:
@@ -676,10 +678,10 @@ def get_options():
         if args.rate_config is None:
             print('Specify rate_config.')
             exit(-1)
-        if parser.bolus is None or parser.bolus < 0.2:
+        if args.bolus is None or args.bolus < 0.2:
             print('Specify bolus >= 0.2 mL')
             exit(-1)
-    return parser.parse_args()
+    return args
 
 
 if __name__ == '__main__':
@@ -687,6 +689,7 @@ if __name__ == '__main__':
     OPERATION_MODE = options.algo
     EXP_NAME = options.exp_name
     EXP_DIR = os.path.join(SAVE_PATH, EXP_NAME)
+    TEMP_INITIAL= [options.temp_initial] * 16
     print(OPERATION_MODE)
     # changes terminal tab title in OSX
     print('\x1B]0;eVOLVER EXPERIMENT: PRESS Ctrl-C TO PAUSE\x07')
