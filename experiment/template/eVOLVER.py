@@ -136,6 +136,7 @@ class EvolverNamespace(BaseNamespace):
         self.emit('getactivecal',
                   {}, namespace='/dpu-evolver')
 
+    # Where OD and temperature calibrations are applied to raw data readings.
     def transform_data(self, data, vials, od_cal, temp_cal):
         od_data_2 = None
         if od_cal['type'] == THREE_DIMENSION:
@@ -384,7 +385,7 @@ class EvolverNamespace(BaseNamespace):
                                   defaults=[exp_str,
                                             "0,0"],
                                   directory='growthrate')
-                # make chemostat file
+                # make chemostat file TODO: Understand why?
                 self._create_file(x, 'chemo_config',
                                   defaults=["0,0,0",
                                             "0,0,0"],
@@ -546,6 +547,7 @@ class EvolverNamespace(BaseNamespace):
         elif OPERATION_MODE == 'chemostat':
             custom_script.chemostat(self, data, vials, elapsed_time, options)
         elif OPERATION_MODE == 'morbidostat':
+            custom_script.morbidostat(self, data, vials, elapsed_time, options)
             pass
         elif OPERATION_MODE == 'timed_morbidostat':
             pass
@@ -627,8 +629,18 @@ def get_options():
         '--rate_config', help="Dilution rate ~ growth rate (1/hr, NOT mL/hr). Highly effects frequency of dilution rates.", type=float)
     parser.add_argument(
         '--bolus', help="Bolus volume (mL). Change with great caution. 0.2 is the absolute minimum. Unlikely to change between experiments. Highly effects frequency of dilution rates.", type=float)
-    
-        # Sanity check for required arguments
+
+    # Morbidostat arguments
+    # concentration of A, B, and media in M
+    parser.add_argument(
+        '--a_conc', help="Concentration of Drug A (μM)", type=float)
+    parser.add_argument(
+        '--b_conc', help="Concentration of Drug B (μM)", type=float)
+    parser.add_argument(
+        '--media_conc', help="Concentration of Media (μM)", type=float)
+    parser.add_argument('--middle_threshold',
+                        help="Midle OD threshold for all vials", type=float)
+    # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
         print('Incorrect algorithm.')
@@ -649,6 +661,7 @@ def get_options():
         print('Specify integer for temp_initial')
         exit(-1)
 
+    # Turbidostat arguments
     if args.algo == 'turbidostat':
         # Sanity check for turbidostat args
         if args.lower_threshold is None or args.lower_threshold < 0:
@@ -681,6 +694,26 @@ def get_options():
         if args.bolus is None or args.bolus < 0.2:
             print('Specify bolus >= 0.2 mL')
             exit(-1)
+    # Morbidostat arguments
+    elif args.algo == "morbidostat":
+        if args.middle_threshold is None:
+            print('Specify a middle threshold.')
+            exit(-1)
+        if args.a_conc is None:
+            print('Specify concentration for drug A.')
+            exit(-1)
+        if args.b_conc is None:
+            print('Specify concentration for drug B.')
+            exit(-1)
+        if args.media_conc is None:
+            print('Specify concentration for media.')
+            exit(-1)
+    # Timed Morbidostat arguments
+    elif args.algo == "timed_morbidostat":
+        exit(-1)
+    # Old Morbidostat arguments
+    elif args.algo == "old_morbistat":
+        exit(-1)
     return args
 
 
@@ -689,13 +722,13 @@ if __name__ == '__main__':
     OPERATION_MODE = options.algo
     EXP_NAME = options.exp_name
     EXP_DIR = os.path.join(SAVE_PATH, EXP_NAME)
-    TEMP_INITIAL= [options.temp_initial] * 16
+    TEMP_INITIAL = [options.temp_initial] * 16
     print(OPERATION_MODE)
     # changes terminal tab title in OSX
     print('\x1B]0;eVOLVER EXPERIMENT: PRESS Ctrl-C TO PAUSE\x07')
 
     # silence logging until experiment is initialized
-    logging.level = logging.CRITICAL + 10
+    logging.level =  # Morbidostat argumentslogging.CRITICAL + 10
 
     socketIO = SocketIO(EVOLVER_IP, EVOLVER_PORT)
     EVOLVER_NS = socketIO.define(EvolverNamespace, '/dpu-evolver')
