@@ -238,99 +238,23 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     middle_thresh = [options.middle_threshold] * len(vials)
     # Upper threshold
     upper_thresh = [options.upper_threshold] * len(vials)
-    ##### Morbidostat Settings #####
-    # Tunable settings for overflow protection, pump scheduling etc.
-    # (sec) additional amount of time to run efflux pump
-    time_out = options.time_out
-    # (min) minimum amount of time to wait between pump events
-    pump_wait = options.pump_wait
-    # (sec) max amount to run influx pumps
-    pump_max = options.pump_max
+    # Drug A Concentration
+    a_conc = options.a_conc
+    # Drug B Concentration
+    b_conc = options.b_conc
+    # Media Concentration
+    media_conc = options.media_conc
     ##### End of Morbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
     flow_rate = eVOLVER.get_flow_rate()  # read from calibration file
-    ##### Turbidostat Control Code Below #####
+    ##### Morbidostat Control Code Below #####
     # maximum of all pump times (to prevent overflow of vials)
     max_time_in = 0
     # fluidic message: initialized so that no change is sent
     MESSAGE = ['--'] * 48
-    for x in turbidostat_vials:  # main loop through each vial
-        # Update turbidostat configuration files for each vial
-        # initialize OD and find OD path
-        file_name = "vial{0}_ODset.txt".format(x)
-        ODset_path = os.path.join(save_path, EXP_NAME, 'ODset', file_name)
-        data = np.genfromtxt(ODset_path, delimiter=',')
-        ODset = data[len(data)-1][1]
-        ODsettime = data[len(data)-1][0]
-        num_curves = len(data)/2
-        file_name = "vial{0}_OD.txt".format(x)
-        OD_path = os.path.join(save_path, EXP_NAME, 'OD', file_name)
-        data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
-        average_OD = 0
+    for x in morbidostat_vials:  # main loop through each vial
+        pass
 
-        # Determine whether turbidostat dilutions are needed
-        # enough_ODdata = (len(data) > 7) #logical, checks to see if enough data points (couple minutes) for sliding window
-        # logical, checks to see if enough growth curves have happened
-        collecting_more_curves = (num_curves <= (stop_after_n_curves + 2))
-
-        if data.size != 0:
-            # Take median to avoid outlier
-            od_values_from_file = data[:, 1]
-            average_OD = float(np.median(od_values_from_file))
-
-            # if recently exceeded upper threshold, note end of growth curve in ODset, allow dilutions to occur and growthrate to be measured
-            if (average_OD > upper_thresh[x]) and (ODset != lower_thresh[x]):
-                text_file = open(ODset_path, "a+")
-                text_file.write("{0},{1}\n".format(
-                    elapsed_time, lower_thresh[x]))
-                text_file.close()
-                ODset = lower_thresh[x]
-                # calculate growth rate
-                eVOLVER.calc_growth_rate(x, ODsettime, elapsed_time)
-
-            # if have approx. reached lower threshold, note start of growth curve in ODset
-            if (average_OD < (lower_thresh[x] + (upper_thresh[x] - lower_thresh[x]) / 3)) and (ODset != upper_thresh[x]):
-                text_file = open(ODset_path, "a+")
-                text_file.write("{0},{1}\n".format(
-                    elapsed_time, upper_thresh[x]))
-                text_file.close()
-                ODset = upper_thresh[x]
-
-            # if need to dilute to lower threshold, then calculate amount of time to pump
-            if average_OD > ODset and collecting_more_curves:
-
-                time_in = - \
-                    (np.log(lower_thresh[x]/average_OD)
-                     * vial_volume)/flow_rate[x]
-                # If pump_for_max is -1, then not set.
-                if pump_for_max < 0 and time_in > pump_for_max:
-                    time_in = pump_for_max
-
-                time_in = round(time_in, 2)
-                max_time_in = max(max_time_in, time_in)
-                file_name = "vial{0}_pump_log.txt".format(x)
-                file_path = os.path.join(save_path, EXP_NAME,
-                                         'pump_log', file_name)
-                data = np.genfromtxt(file_path, delimiter=',')
-                last_pump = data[len(data)-1][0]
-                # if sufficient time since last pump, send command to Arduino
-                if ((elapsed_time - last_pump)*60) >= pump_wait:
-                    logger.info('turbidostat dilution for vial %d' % x)
-                    # media pump
-                    MESSAGE[x] = str(time_in)
-
-                    file_name = "vial{0}_pump_log.txt".format(x)
-                    file_path = os.path.join(
-                        save_path, EXP_NAME, 'pump_log', file_name)
-
-                    text_file = open(file_path, "a+")
-                    text_file.write("{0},{1}\n".format(elapsed_time, time_in))
-                    text_file.close()
-        else:
-            logger.debug('not enough OD measurements for vial %d' % x)
-
-    # here lives the code that controls the suction pump
-    MESSAGE[-1] = str(max_time_in + time_out)
     # send fluidic command only if we are actually turning on any of the pumps
     if MESSAGE != ['--'] * 48:
         eVOLVER.fluid_command(MESSAGE)

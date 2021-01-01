@@ -736,8 +736,7 @@ if __name__ == '__main__':
     # start by stopping any existing chemostat
     EVOLVER_NS.stop_all_pumps()
     #
-    EVOLVER_NS.start_time = EVOLVER_NS.initialize_exp(VIALS,
-                                                      options.always_yes)
+    EVOLVER_NS.start_time = EVOLVER_NS.initialize_exp(VIALS, options.always_yes)
 
     # logging setup
     if options.quiet:
