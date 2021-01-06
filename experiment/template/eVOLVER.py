@@ -640,6 +640,7 @@ def get_options():
         '--media_conc', help="Concentration of Media (μM)", type=float)
     parser.add_argument('--middle_threshold',
                         help="Midle OD threshold for all vials", type=float)
+    parser.add_argument('--same_drug', help='Whether or not drug A and drug B are the same drug.', type=bool)
     # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
@@ -660,7 +661,6 @@ def get_options():
     if args.temp_initial is None:
         print('Specify integer for temp_initial')
         exit(-1)
-
     # Turbidostat arguments
     if args.algo == 'turbidostat':
         # Sanity check for turbidostat args
@@ -707,6 +707,9 @@ def get_options():
             exit(-1)
         if args.media_conc is None:
             print('Specify concentration for media.')
+            exit(-1)
+        if args.same_drug is None:
+            print('Specify boolean for same_drug')
             exit(-1)
     # Timed Morbidostat arguments
     elif args.algo == "timed_morbidostat":

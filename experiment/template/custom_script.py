@@ -224,6 +224,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # Identify pump calibration files, define initial values for temperature, stirring, volume, power settings
     vial_volume = options.vial_volume  # mL, determined by vial cap straw length
+    exp_name = options.exp_name
     ##### USER DEFINED VARIABLES #####
     # vials is all 16, can set to different range (ex. [0,1,2,3]) to only trigger tstat on those vials
     morbidostat_vials = vials
@@ -242,6 +243,8 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     a_conc = options.a_conc
     # Drug B Concentration
     b_conc = options.b_conc
+    # Whether or not drug A and drug B are the same drug.
+    same_drug = options.same_drug
     # Media Concentration
     media_conc = options.media_conc
     ##### End of Morbidostat Settings #####
@@ -253,7 +256,54 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # fluidic message: initialized so that no change is sent
     MESSAGE = ['--'] * 48
     for x in morbidostat_vials:  # main loop through each vial
-        pass
+        # initialize OD and find OD path
+        file_name = "vial{0}_OD.txt".format(x)
+        OD_path = os.path.join(save_path, exp_name, 'OD', file_name)
+        data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
+        average_OD = 0
+        # enough_ODdata = (len(data) > 7) #logical, checks to see if enough data points (couple minutes) for sliding window
+
+        # waits for seven OD measurements (couple minutes) for sliding window
+        if data.size != 0:
+            # calculate median OD
+            od_values_from_file = data[:, 1]
+            average_OD = float(np.median(od_values_from_file))
+            # PID calculations
+            p = average_OD - middle_thresh[x]
+            # i is sum of last 5 p values.
+            last_n_ps = [0, 0, 0, 0, 0]
+            i = sum(last_n_ps)
+            # d is the change in ODFinals / cycle_time
+            d = 0
+            pid = 0.01 * i + d
+            if average_OD > upper_thresh[x]:
+                pid += 1e5
+            elif average_OD < middle_thresh[x]:
+                pid -= 1e5
+            else:
+                pid += p
+            # decision tree based on OD and PID state
+            curPhase = None
+            if average_OD < upper_thresh[x]:
+                # Nothing
+                curPhase = "I"
+            elif pid > 0: # TODO: and drugAllowed[x]:
+                # TODO: drugAllowed = false
+                if average_OD > upper_thresh[x] or (same_drug and 0.6 * a_conc):
+                    curPhase = "B"
+                    # TODO: add drug b for x & calc new conc.
+                else:
+                    curPhase = "A"
+                    # TODO: add drug a for x & calc new conc.
+            else:
+                # TODO: drugAllowed = true
+                curPhase = "M"
+                # TODO: add media for x & calc new conc.
+        else:
+            logger.debug('not enough OD measurements for vial %d' % x)
+
+    # here lives the code that controls the suction pump
+    MESSAGE[-1] = str(max_time_in)
 
     # send fluidic command only if we are actually turning on any of the pumps
     if MESSAGE != ['--'] * 48:
