@@ -359,7 +359,10 @@ class EvolverNamespace(BaseNamespace):
             os.makedirs(os.path.join(EXP_DIR, 'pump_log'))
             os.makedirs(os.path.join(EXP_DIR, 'ODset'))
             os.makedirs(os.path.join(EXP_DIR, 'growthrate'))
-            os.makedirs(os.path.join(EXP_DIR, 'chemo_config'))
+            if options.algo is 'chemostat':
+                os.makedirs(os.path.join(EXP_DIR, 'chemo_config'))
+            elif options.algo is 'morbidostat':
+                os.makedirs(os.path.join(EXP_DIR, 'morbido_log'))
             for x in vials:
                 exp_str = "Experiment: {0} vial {1}, {2}".format(EXP_NAME,
                                                                  x,
@@ -385,12 +388,17 @@ class EvolverNamespace(BaseNamespace):
                                   defaults=[exp_str,
                                             "0,0"],
                                   directory='growthrate')
-                # make chemostat file TODO: Understand why?
-                self._create_file(x, 'chemo_config',
-                                  defaults=["0,0,0",
-                                            "0,0,0"],
-                                  directory='chemo_config')
-
+                # make chemostat file
+                if options.algo is 'chemostat':
+                    self._create_file(x, 'chemo_config',
+                                      defaults=["0,0,0",
+                                                "0,0,0"],
+                                      directory='chemo_config')
+                elif options.algo is 'morbidostat':
+                    # time, p, i, d, pid, drug a conc., drug b conc., phase
+                    self._create_file(x, 'morbido_log',
+                                      defaults=["0,0,0,0,0,0,0,I"],
+                                      directory='morbido_log')
             self.update_stir_rate(options.stir_initial)
 
             if always_yes:
@@ -636,11 +644,22 @@ def get_options():
         '--a_conc', help="Concentration of Drug A (μM)", type=float)
     parser.add_argument(
         '--b_conc', help="Concentration of Drug B (μM)", type=float)
-    parser.add_argument(
-        '--media_conc', help="Concentration of Media (μM)", type=float)
     parser.add_argument('--middle_threshold',
                         help="Midle OD threshold for all vials", type=float)
-    parser.add_argument('--same_drug', help='Whether or not drug A and drug B are the same drug.', type=bool)
+    parser.add_argument(
+        '--same_drug', help='Whether or not drug A and drug B are the same drug.', type=bool)
+    parser.add_argument(
+        '--pump_a_for', help='How long to pump drug A for (sec)', type=int
+    )
+    parser.add_argument(
+        '--pump_b_for', help='How long to pump drug A for (sec)', type=int
+    )
+    parser.add_argument(
+        '--pump_media_for', help='How long to pump drug A for (sec)', type=int
+    )
+    parser.add_argument(
+        '--suction_for', help='How long to pump drug A for (sec)', type=int
+    )
     # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
@@ -705,9 +724,6 @@ def get_options():
         if args.b_conc is None:
             print('Specify concentration for drug B.')
             exit(-1)
-        if args.media_conc is None:
-            print('Specify concentration for media.')
-            exit(-1)
         if args.same_drug is None:
             print('Specify boolean for same_drug')
             exit(-1)
@@ -739,7 +755,8 @@ if __name__ == '__main__':
     # start by stopping any existing chemostat
     EVOLVER_NS.stop_all_pumps()
     #
-    EVOLVER_NS.start_time = EVOLVER_NS.initialize_exp(VIALS, options.always_yes)
+    EVOLVER_NS.start_time = EVOLVER_NS.initialize_exp(
+        VIALS, options.always_yes)
 
     # logging setup
     if options.quiet:
