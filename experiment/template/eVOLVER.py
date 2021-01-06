@@ -668,7 +668,7 @@ def get_options():
             print('Specify non-negative lower_threshold')
             exit(-1)
         if args.upper_threshold is None or args.upper_threshold < 0:
-            print('Specify non-negative lower_threshold')
+            print('Specify non-negative upper_threshold')
             exit(-1)
         if args.time_out is None or args.time_out < 0:
             print('Specify non-negative time_out')

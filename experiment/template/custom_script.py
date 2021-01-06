@@ -130,7 +130,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # (min) minimum amount of time to wait between pump events
     pump_wait = options.pump_wait
     # (sec) max amount to run influx pumps
-    pump_max = options.pump_max
+    pump_for_max = options.pump_for_max
     ##### End of Turbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
     flow_rate = eVOLVER.get_flow_rate()  # read from calibration file
