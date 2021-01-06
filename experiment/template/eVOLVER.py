@@ -728,7 +728,7 @@ if __name__ == '__main__':
     print('\x1B]0;eVOLVER EXPERIMENT: PRESS Ctrl-C TO PAUSE\x07')
 
     # silence logging until experiment is initialized
-    logging.level =  # Morbidostat argumentslogging.CRITICAL + 10
+    logging.level = logging.CRITICAL + 10
 
     socketIO = SocketIO(EVOLVER_IP, EVOLVER_PORT)
     EVOLVER_NS = socketIO.define(EvolverNamespace, '/dpu-evolver')
