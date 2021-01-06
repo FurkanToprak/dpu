@@ -225,6 +225,7 @@ def get_p_value(line): return line.split(',')[1]
 
 
 def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
+    # First rack is media, second rack is drug A, third rack is drug B.
     media_pump = 0
     a_pump = 1
     b_pump = 2
@@ -248,6 +249,13 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     b_conc = options.b_conc
     # Whether or not drug A and drug B are the same drug.
     same_drug = options.same_drug
+    # Pump duration
+    pump_a_for = options.pump_a_for
+    pump_b_for = options.pump_b_for
+    pump_media_for = options.pump_media_for
+    suction_for = options.suction_for
+    # Cycle duration TODO: IMPLEMENT
+    pump_wait = options.pump_wait
     ##### End of Morbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
     # mL/sec, read from calibration file.
@@ -303,20 +311,20 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             # For tracking
             drug_a_conc = last_drug_a_conc
             drug_b_conc = last_drug_b_conc
-            if average_OD < upper_thresh[x]:
+            if average_OD < lower_thresh[x]:
                 # Nothing; Idle due to insufficient OD.
                 phase = "I"
             elif pid > 0 and drugAllowed:
                 if average_OD > upper_thresh[x] or (same_drug and 0.6 * a_conc):
                     phase = "B"
                     used_pump = b_pump
-                    time_in = options.pump_b_for
+                    time_in = pump_b_for
                     newVolume = time_in * flow_rate
                     drug_b_conc = (b_conc * newVolume + drug_b_conc * vial_volume) / (newVolume + vial_volume)
                 else:
                     phase = "A"
                     used_pump = a_pump
-                    time_in = options.pump_a_for
+                    time_in = pump_a_for
                     newVolume = time_in * flow_rate
                     drug_a_conc = (a_conc * newVolume + drug_a_conc * vial_volume) / (newVolume + vial_volume)
                 if same_drug: # Keep concentrations equal if the same drug.
@@ -327,8 +335,9 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             else:
                 phase = "M"
                 used_pump = media_pump
-                time_in = options.pump_media_for
-                # TODO: add media for x & calc new conc.
+                time_in = pump_media_for
+                drug_a_conc = (drug_a_conc * vial_volume) / (newVolume + vial_volume)
+                drug_b_conc = (drug_b_conc * vial_volume) / (newVolume + vial_volume)
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
@@ -336,7 +345,8 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             logger.debug('not enough OD measurements for vial %d' % x)
 
     # here lives the code that controls the suction pump
-    MESSAGE[-1] = str(max_time_in)
+    if max_time_in > 0:
+        MESSAGE[-1] = str(suction_for)
 
     # send fluidic command only if we are actually turning on any of the pumps
     if MESSAGE != ['--'] * 48:

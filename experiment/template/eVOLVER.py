@@ -715,6 +715,9 @@ def get_options():
             exit(-1)
     # Morbidostat arguments
     elif args.algo == "morbidostat":
+        if args.pump_wait is None or args.pump_wait < 0:
+            print('Specify non-negative pump_wait')
+            exit(-1)
         if args.middle_threshold is None:
             print('Specify a middle threshold.')
             exit(-1)
