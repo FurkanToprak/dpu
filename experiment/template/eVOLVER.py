@@ -375,10 +375,10 @@ class EvolverNamespace(BaseNamespace):
                 self._create_file(x, 'temp_config',
                                   defaults=[exp_str,
                                             "0,{0}".format(TEMP_INITIAL[x])])
-                # make pump log file
+                # make pump log file [time, pump_duration, average (smoothed) OD]
                 self._create_file(x, 'pump_log',
                                   defaults=[exp_str,
-                                            "0,0"])
+                                            "0,0,0"])
                 # make ODset file
                 self._create_file(x, 'ODset',
                                   defaults=[exp_str,
@@ -663,7 +663,7 @@ def get_options():
     # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
-        print('Incorrect algorithm.')
+        print('Specify algorithm within the available options.')
         exit(-1)
     if args.exp_name is None or len(args.exp_name) == 0:
         print('Specify experiment name.')
@@ -719,16 +719,16 @@ def get_options():
             print('Specify non-negative pump_wait')
             exit(-1)
         if args.middle_threshold is None:
-            print('Specify a middle threshold.')
+            print('Specify a middle_threshold.')
             exit(-1)
         if args.a_conc is None:
-            print('Specify concentration for drug A.')
+            print('Specify concentration for drug A (a_conc).')
             exit(-1)
         if args.b_conc is None:
-            print('Specify concentration for drug B.')
+            print('Specify concentration for drug B (b_conc).')
             exit(-1)
         if args.same_drug is None:
-            print('Specify boolean for same_drug')
+            print('Specify boolean for same_drug (True/False)')
             exit(-1)
     # Timed Morbidostat arguments
     elif args.algo == "timed_morbidostat":

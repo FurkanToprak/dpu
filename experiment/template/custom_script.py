@@ -193,6 +193,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 
                 time_in = round(time_in, 2)
                 max_time_in = max(max_time_in, time_in)
+                # Access pump logs to see last pump time.
                 file_name = "vial{0}_pump_log.txt".format(x)
                 file_path = os.path.join(save_path, EXP_NAME,
                                          'pump_log', file_name)
@@ -209,7 +210,8 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                         save_path, EXP_NAME, 'pump_log', file_name)
 
                     text_file = open(file_path, "a+")
-                    text_file.write("{0},{1}\n".format(elapsed_time, time_in))
+                    text_file.write("{0},{1},{2}\n".format(
+                        elapsed_time, time_in, average_OD))
                     text_file.close()
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
@@ -254,7 +256,7 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     pump_b_for = options.pump_b_for
     pump_media_for = options.pump_media_for
     suction_for = options.suction_for
-    # Cycle duration TODO: IMPLEMENT
+    # Cycle duration
     pump_wait = options.pump_wait
     ##### End of Morbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
@@ -273,6 +275,16 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
         average_OD = 0
         # waits for seven OD measurements (couple minutes) for sliding window
         if data.size != 0:
+            # Access pump logs to see last pump time.
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            data = np.genfromtxt(file_path, delimiter=',')
+            last_pump = data[len(data)-1][0]
+            last_average_OD = data[len(data)-1][2]
+            # if not sufficient time since last pump, skip vial.
+            if ((elapsed_time - last_pump)*60) < pump_wait:
+                continue
             # Fetch morbidostat state for each vial.
             file_name = "vial{0}_morbido_log.txt".format(x)
             state_path = os.path.join(
@@ -294,8 +306,8 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             p = average_OD - middle_thresh[x]
             # i is sum of last 5 p values.
             i = sum(last_n_ps)
-            # TODO: d is the change in ODFinals / cycle_time
-            d = 0
+            # d is the change in ODFinals / cycle_time (hours)
+            d = (average_OD - last_average_OD) / (pump_wait / 60)
             pid = 0.01 * i + d
             if average_OD > upper_thresh[x]:
                 pid += 1e5
@@ -320,14 +332,16 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                     used_pump = b_pump
                     time_in = pump_b_for
                     newVolume = time_in * flow_rate
-                    drug_b_conc = (b_conc * newVolume + drug_b_conc * vial_volume) / (newVolume + vial_volume)
+                    drug_b_conc = (b_conc * newVolume + drug_b_conc *
+                                   vial_volume) / (newVolume + vial_volume)
                 else:
                     phase = "A"
                     used_pump = a_pump
                     time_in = pump_a_for
                     newVolume = time_in * flow_rate
-                    drug_a_conc = (a_conc * newVolume + drug_a_conc * vial_volume) / (newVolume + vial_volume)
-                if same_drug: # Keep concentrations equal if the same drug.
+                    drug_a_conc = (a_conc * newVolume + drug_a_conc *
+                                   vial_volume) / (newVolume + vial_volume)
+                if same_drug:  # Keep concentrations equal if the same drug.
                     if phase is "A":
                         drug_b_conc = drug_a_conc
                     else:
@@ -336,11 +350,21 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                 phase = "M"
                 used_pump = media_pump
                 time_in = pump_media_for
-                drug_a_conc = (drug_a_conc * vial_volume) / (newVolume + vial_volume)
-                drug_b_conc = (drug_b_conc * vial_volume) / (newVolume + vial_volume)
+                drug_a_conc = (drug_a_conc * vial_volume) / \
+                    (newVolume + vial_volume)
+                drug_b_conc = (drug_b_conc * vial_volume) / \
+                    (newVolume + vial_volume)
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
+            logger.info('morbidostat action for vial %d' % x)
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            text_file = open(file_path, "a+")
+            text_file.write("{0},{1},{2}\n".format(
+                elapsed_time, time_in, average_OD))
+            text_file.close()
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
 
