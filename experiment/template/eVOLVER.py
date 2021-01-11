@@ -379,7 +379,7 @@ class EvolverNamespace(BaseNamespace):
                 # Timed morbidostat uses the third column to track states instead of smoothed OD.
                 self._create_file(x, 'pump_log',
                                   defaults=[exp_str,
-                                            "0,0,0"])
+                                            "0,0,-1,-1" if options.algo == 'timed_morbidostat' else "0,0,0"])
                 # make ODset file
                 self._create_file(x, 'ODset',
                                   defaults=[exp_str,
@@ -676,6 +676,12 @@ def get_options():
         '--init_b', help="Time to wait before administering drug B for the first time (hrs). If use_b flag is disabled, this will be ignored.", type=float
     )
     parser.add_argument(
+        '--times_a', help="Number of cycles in a row to apply drug A.", type=int
+    )
+    parser.add_argument(
+        '--times_b', help="Number of cycles in a row to apply drug B. If use_b flag is disabled, this will be ignored.", type=int
+    )
+    parser.add_argument(
         '--use_b', help="Boolean flag to enable drug B.", type=bool
     )
     # Sanity check for required arguments
@@ -759,6 +765,9 @@ def get_options():
         if args.freq_a is None or args.freq_a < 0:
             print('Specify non-negative freq_a')
             exit(-1)
+        if args.times_a is None or args.times_a <= 0:
+            print('Specify positive integer for times_a.')
+            exit(-1)
         if args.use_b is True:
             if args.init_b is None or args.init_b < 0:
                 print('Specify non-negative init_a')
@@ -766,7 +775,11 @@ def get_options():
             if args.freq_b is None or args.freq_b < 0:
                 print('Specify non-negative freq_b')
                 exit(-1)
+            if args.times_b is None or args.times_b <= 0:
+                print('Specify positive integer for times_b.')
+                exit(-1)
     return args
+
 
 if __name__ == '__main__':
     options = get_options()

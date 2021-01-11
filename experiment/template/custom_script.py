@@ -506,7 +506,7 @@ def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
-            logger.info('morbidostat action for vial %d' % x)
+            logger.info('old morbidostat action for vial %d' % x)
             file_name = "vial{0}_pump_log.txt".format(x)
             file_path = os.path.join(save_path, exp_name,
                                      'pump_log', file_name)
@@ -527,9 +527,9 @@ def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 
 # Implementation of timed morbidostat
 def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
-    # Timed morbidostat holds two states simultaneously:
-    # The state for timer A and timer B.
-    # Timer A is responsible for delivering drugs
+    # Timed morbidostat holds two states simultaneously: The state for timer A and timer B.
+    # State Dictionary:
+    # -1: Never applied, n >= 0: Applied drug in question n times. Snaps back to 0 once n == times_a
     # First rack is media, second rack is drug A, third rack is drug B.
     media_pump = 0
     a_pump = 1
@@ -562,7 +562,19 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # Cycle duration
     pump_wait = options.pump_wait
     # Whether drug B will be used
-    
+    use_b = options.use_b
+    # Initial time before drug A will be administered (hrs)
+    init_a = options.init_a
+    # Initial time before drug B will be administered (hrs)
+    init_b = options.init_b
+    # Frequency to use drug A (hrs)
+    freq_a = options.freq_a
+    # Frequency to use drug B (hrs)
+    freq_b = options.freq_b
+    # Number of times in a row to apply drug A.
+    times_a = options.times_a
+    # Number of times in a row to apply drug B.
+    times_b = options.times_b
     ##### End of Timed Morbidostat Settings #####
     save_path = os.path.dirname(os.path.realpath(__file__))  # save path
     # mL/sec, read from calibration file.
@@ -586,7 +598,8 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                                      'pump_log', file_name)
             data = np.genfromtxt(file_path, delimiter=',')
             last_pump = data[len(data)-1][0]
-            last_average_OD = data[len(data)-1][2]
+            last_a_state = data[len(data)-1][2]
+            last_b_state = data[len(data)-1][2]
             # if not sufficient time since last pump, skip vial.
             if ((elapsed_time - last_pump)*60) < pump_wait:
                 continue
@@ -596,8 +609,6 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                 save_path, exp_name, 'morbido_log', file_name)
             state_file = open(state_path, 'r')
             state_file_lines = state_file.read().split('\n')
-            last_n_lines = min(len(state_file_lines), 5)
-            last_n_ps = map(get_p_value, state_file_lines[-last_n_lines:])
             last_state = state_file_lines[-1].split(',')
             last_drug_a_conc = last_state[5]
             last_drug_b_conc = last_state[6]
@@ -607,17 +618,8 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             # calculate median OD
             od_values_from_file = data[:, 1]
             average_OD = float(np.median(od_values_from_file))
-            # PID calculations
-            p = average_OD - middle_thresh[x]
-            # i is sum of last 5 p values.
-            i = sum(last_n_ps)
             # d is the change in ODFinals / cycle_time (hours)
             d = (average_OD - last_average_OD) / (pump_wait / 60)
-            pid = 0.01 * i + d
-            if p > 0:
-                pid += 1e5
-            else:
-                pid -= 1e5
             # decision tree based on OD and PID state
             phase = "I"
             # For pumping
@@ -626,41 +628,18 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             # For tracking
             drug_a_conc = last_drug_a_conc
             drug_b_conc = last_drug_b_conc
-            if average_OD < lower_thresh[x]:
-                # Nothing; Idle due to insufficient OD.
-                phase = "I"
-            elif pid > 0 and drugAllowed:
-                if average_OD > upper_thresh[x] or (same_drug and 0.6 * a_conc):
-                    phase = "B"
-                    used_pump = b_pump
-                    time_in = pump_b_for
-                    newVolume = time_in * flow_rate
-                    drug_b_conc = (b_conc * newVolume + drug_b_conc *
-                                   vial_volume) / (newVolume + vial_volume)
-                else:
-                    phase = "A"
-                    used_pump = a_pump
-                    time_in = pump_a_for
-                    newVolume = time_in * flow_rate
-                    drug_a_conc = (a_conc * newVolume + drug_a_conc *
-                                   vial_volume) / (newVolume + vial_volume)
-                if same_drug:  # Keep concentrations equal if the same drug.
-                    if phase is "A":
-                        drug_b_conc = drug_a_conc
-                    else:
-                        drug_a_conc = drug_b_conc
-            else:
-                phase = "M"
-                used_pump = media_pump
-                time_in = pump_media_for
-                drug_a_conc = (drug_a_conc * vial_volume) / \
-                    (newVolume + vial_volume)
-                drug_b_conc = (drug_b_conc * vial_volume) / \
-                    (newVolume + vial_volume)
+            #TODO: Decision
+            a_state = None
+            b_state = None
+            # if last_a_state == -1:
+            #     if init_a * 60 * 60 > elapsed_time:
+            #         # pump a
+            #         a_state = 0
+            # if freq_a * 60 * 60 > 
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
-            logger.info('morbidostat action for vial %d' % x)
+            logger.info('timed morbidostat action for vial %d' % x)
             file_name = "vial{0}_pump_log.txt".format(x)
             file_path = os.path.join(save_path, exp_name,
                                      'pump_log', file_name)
