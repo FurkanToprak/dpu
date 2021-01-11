@@ -359,9 +359,9 @@ class EvolverNamespace(BaseNamespace):
             os.makedirs(os.path.join(EXP_DIR, 'pump_log'))
             os.makedirs(os.path.join(EXP_DIR, 'ODset'))
             os.makedirs(os.path.join(EXP_DIR, 'growthrate'))
-            if options.algo is 'chemostat':
+            if options.algo == 'chemostat':
                 os.makedirs(os.path.join(EXP_DIR, 'chemo_config'))
-            elif options.algo is 'morbidostat':
+            elif options.algo == 'morbidostat' or options.algo == 'old_morbidostat' or options.algo == 'timed_morbidostat':
                 os.makedirs(os.path.join(EXP_DIR, 'morbido_log'))
             for x in vials:
                 exp_str = "Experiment: {0} vial {1}, {2}".format(EXP_NAME,
@@ -375,7 +375,8 @@ class EvolverNamespace(BaseNamespace):
                 self._create_file(x, 'temp_config',
                                   defaults=[exp_str,
                                             "0,{0}".format(TEMP_INITIAL[x])])
-                # make pump log file [time, pump_duration, average (smoothed) OD]
+                # make pump log file [time, pump_duration, average (smoothed) OD].
+                # Timed morbidostat uses the third column to track states instead of smoothed OD.
                 self._create_file(x, 'pump_log',
                                   defaults=[exp_str,
                                             "0,0,0"])
@@ -389,12 +390,12 @@ class EvolverNamespace(BaseNamespace):
                                             "0,0"],
                                   directory='growthrate')
                 # make chemostat file
-                if options.algo is 'chemostat':
+                if options.algo == 'chemostat':
                     self._create_file(x, 'chemo_config',
                                       defaults=["0,0,0",
                                                 "0,0,0"],
                                       directory='chemo_config')
-                elif options.algo is 'morbidostat':
+                elif options.algo == 'morbidostat' or options.algo == 'old_morbidostat' or options.algo == 'timed_morbidostat':
                     # time, p, i, d, pid, drug a conc., drug b conc., phase
                     self._create_file(x, 'morbido_log',
                                       defaults=["0,0,0,0,0,0,0,I"],
@@ -556,11 +557,12 @@ class EvolverNamespace(BaseNamespace):
             custom_script.chemostat(self, data, vials, elapsed_time, options)
         elif OPERATION_MODE == 'morbidostat':
             custom_script.morbidostat(self, data, vials, elapsed_time, options)
-            pass
         elif OPERATION_MODE == 'timed_morbidostat':
-            pass
+            custom_script.timed_morbidostat(
+                self, data, vials, elapsed_time, options)
         elif OPERATION_MODE == 'old_morbidostat':
-            pass
+            custom_script.old_morbidostat(
+                self, data, vials, elapsed_time, options)
         else:
             # try to load the user function
             # if failing report to user
@@ -660,6 +662,22 @@ def get_options():
     parser.add_argument(
         '--suction_for', help='How long to pump drug A for (sec)', type=int
     )
+    # Timed Morbidostat arguments (in addition to morbidostat args)
+    parser.add_argument(
+        '--freq_a', help="Frequency to administer drug A (hrs).", type=float
+    )
+    parser.add_argument(
+        '--freq_b', help="Frequency to administer drug B (hrs). If use_b flag is disabled, this will be ignored.", type=float
+    )
+    parser.add_argument(
+        '--init_a', help="Time to wait before administering drug A for the first time (hrs).", type=float
+    )
+    parser.add_argument(
+        '--init_b', help="Time to wait before administering drug B for the first time (hrs). If use_b flag is disabled, this will be ignored.", type=float
+    )
+    parser.add_argument(
+        '--use_b', help="Boolean flag to enable drug B.", type=bool
+    )
     # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
@@ -699,7 +717,7 @@ def get_options():
             print('Specify non-negative pump_for_max')
             exit(-1)
     # Chemostat arguments
-    elif args.algo == 'chemostat':
+    if args.algo == 'chemostat':
         # Sanity check for chemostat args
         if args.start_od is None:
             print('Specify non-negative start_OD')
@@ -713,8 +731,8 @@ def get_options():
         if args.bolus is None or args.bolus < 0.2:
             print('Specify bolus >= 0.2 mL')
             exit(-1)
-    # Morbidostat arguments
-    elif args.algo == "morbidostat":
+    # Morbidostat arguments. Old morbidostat has the same arguments.
+    if args.algo == "morbidostat" or args.algo == "old_morbidostat" or args.algo == "timed_morbidostat":
         if args.pump_wait is None or args.pump_wait < 0:
             print('Specify non-negative pump_wait')
             exit(-1)
@@ -731,13 +749,24 @@ def get_options():
             print('Specify boolean for same_drug (True/False)')
             exit(-1)
     # Timed Morbidostat arguments
-    elif args.algo == "timed_morbidostat":
-        exit(-1)
-    # Old Morbidostat arguments
-    elif args.algo == "old_morbistat":
-        exit(-1)
+    if args.algo == "timed_morbidostat":
+        if args.use_b is None:
+            print('Specify boolean for use_b (True/False)')
+            exit(-1)
+        if args.init_a is None or args.init_a < 0:
+            print('Specify non-negative init_a')
+            exit(-1)
+        if args.freq_a is None or args.freq_a < 0:
+            print('Specify non-negative freq_a')
+            exit(-1)
+        if args.use_b is True:
+            if args.init_b is None or args.init_b < 0:
+                print('Specify non-negative init_a')
+                exit(-1)
+            if args.freq_b is None or args.freq_b < 0:
+                print('Specify non-negative freq_b')
+                exit(-1)
     return args
-
 
 if __name__ == '__main__':
     options = get_options()

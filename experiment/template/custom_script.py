@@ -225,7 +225,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 
 def get_p_value(line): return line.split(',')[1]
 
-
+# Implementation of current-day morbidostat
 def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # First rack is media, second rack is drug A, third rack is drug B.
     media_pump = 0
@@ -376,6 +376,309 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     if MESSAGE != ['--'] * 48:
         eVOLVER.fluid_command(MESSAGE)
 
+# Subtly different from current-day morbidostat. This is a legacy version featured in some papers.
+def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
+    # First rack is media, second rack is drug A, third rack is drug B.
+    media_pump = 0
+    a_pump = 1
+    b_pump = 2
+    # Identify pump calibration files, define initial values for temperature, stirring, volume, power settings
+    vial_volume = options.vial_volume  # mL, determined by vial cap straw length
+    ##### USER DEFINED VARIABLES #####
+    # vials is all 16, can set to different range (ex. [0,1,2,3]) to only trigger tstat on those vials
+    morbidostat_vials = vials
+    # Number of values to calculate the OD average
+    OD_values_to_average = options.to_avg
+    exp_name = options.exp_name  # Name of experiment files
+    # Lower threshold to minimize logic arising from noise
+    lower_thresh = [options.lower_threshold] * len(vials)
+    # Middle threshold
+    middle_thresh = [options.middle_threshold] * len(vials)
+    # Upper threshold
+    upper_thresh = [options.upper_threshold] * len(vials)
+    # Drug A Concentration
+    a_conc = options.a_conc
+    # Drug B Concentration
+    b_conc = options.b_conc
+    # Whether or not drug A and drug B are the same drug.
+    same_drug = options.same_drug
+    # Pump duration
+    pump_a_for = options.pump_a_for
+    pump_b_for = options.pump_b_for
+    pump_media_for = options.pump_media_for
+    suction_for = options.suction_for
+    # Cycle duration
+    pump_wait = options.pump_wait
+    ##### End of Morbidostat Settings #####
+    save_path = os.path.dirname(os.path.realpath(__file__))  # save path
+    # mL/sec, read from calibration file.
+    flow_rate = eVOLVER.get_flow_rate()
+    ##### Morbidostat Control Code Below #####
+    # maximum of all pump times (to prevent overflow of vials)
+    max_time_in = 0
+    # fluidic message: initialized so that no change is sent
+    MESSAGE = ['--'] * 48
+    for x in morbidostat_vials:  # main loop through each vial
+        # initialize OD and find OD path for each vial
+        file_name = "vial{0}_OD.txt".format(x)
+        OD_path = os.path.join(save_path, exp_name, 'OD', file_name)
+        data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
+        average_OD = 0
+        # waits for seven OD measurements (couple minutes) for sliding window
+        if data.size != 0:
+            # Access pump logs to see last pump time.
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            data = np.genfromtxt(file_path, delimiter=',')
+            last_pump = data[len(data)-1][0]
+            last_average_OD = data[len(data)-1][2]
+            # if not sufficient time since last pump, skip vial.
+            if ((elapsed_time - last_pump)*60) < pump_wait:
+                continue
+            # Fetch morbidostat state for each vial.
+            file_name = "vial{0}_morbido_log.txt".format(x)
+            state_path = os.path.join(
+                save_path, exp_name, 'morbido_log', file_name)
+            state_file = open(state_path, 'r')
+            state_file_lines = state_file.read().split('\n')
+            last_n_lines = min(len(state_file_lines), 5)
+            last_n_ps = map(get_p_value, state_file_lines[-last_n_lines:])
+            last_state = state_file_lines[-1].split(',')
+            last_drug_a_conc = last_state[5]
+            last_drug_b_conc = last_state[6]
+            last_phase = last_state[7]
+            drugAllowed = last_phase is 'M'
+            state_file.close()
+            # calculate median OD
+            od_values_from_file = data[:, 1]
+            average_OD = float(np.median(od_values_from_file))
+            # PID calculations
+            p = average_OD - middle_thresh[x]
+            # i is sum of last 5 p values.
+            i = sum(last_n_ps)
+            # d is the change in ODFinals / cycle_time (hours)
+            d = (average_OD - last_average_OD) / (pump_wait / 60)
+            pid = 0.01 * i + d
+            if p > 0:
+                pid += 1e5
+            else:
+                pid -= 1e5
+            # decision tree based on OD and PID state
+            phase = "I"
+            # For pumping
+            time_in = 0
+            used_pump = None
+            # For tracking
+            drug_a_conc = last_drug_a_conc
+            drug_b_conc = last_drug_b_conc
+            if average_OD < lower_thresh[x]:
+                # Nothing; Idle due to insufficient OD.
+                phase = "I"
+            elif pid > 0 and drugAllowed:
+                if average_OD > upper_thresh[x] or (same_drug and 0.6 * a_conc):
+                    phase = "B"
+                    used_pump = b_pump
+                    time_in = pump_b_for
+                    newVolume = time_in * flow_rate
+                    drug_b_conc = (b_conc * newVolume + drug_b_conc *
+                                   vial_volume) / (newVolume + vial_volume)
+                else:
+                    phase = "A"
+                    used_pump = a_pump
+                    time_in = pump_a_for
+                    newVolume = time_in * flow_rate
+                    drug_a_conc = (a_conc * newVolume + drug_a_conc *
+                                   vial_volume) / (newVolume + vial_volume)
+                if same_drug:  # Keep concentrations equal if the same drug.
+                    if phase is "A":
+                        drug_b_conc = drug_a_conc
+                    else:
+                        drug_a_conc = drug_b_conc
+            else:
+                phase = "M"
+                used_pump = media_pump
+                time_in = pump_media_for
+                drug_a_conc = (drug_a_conc * vial_volume) / \
+                    (newVolume + vial_volume)
+                drug_b_conc = (drug_b_conc * vial_volume) / \
+                    (newVolume + vial_volume)
+            if used_pump is not None:
+                MESSAGE[used_pump * 16 + x] = time_in
+            max_time_in = max(max_time_in, time_in)
+            logger.info('morbidostat action for vial %d' % x)
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            text_file = open(file_path, "a+")
+            text_file.write("{0},{1},{2}\n".format(
+                elapsed_time, time_in, average_OD))
+            text_file.close()
+        else:
+            logger.debug('not enough OD measurements for vial %d' % x)
+
+    # here lives the code that controls the suction pump
+    if max_time_in > 0:
+        MESSAGE[-1] = str(suction_for)
+
+    # send fluidic command only if we are actually turning on any of the pumps
+    if MESSAGE != ['--'] * 48:
+        eVOLVER.fluid_command(MESSAGE)
+
+# Implementation of timed morbidostat
+def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
+    # Timed morbidostat holds two states simultaneously:
+    # The state for timer A and timer B.
+    # Timer A is responsible for delivering drugs
+    # First rack is media, second rack is drug A, third rack is drug B.
+    media_pump = 0
+    a_pump = 1
+    b_pump = 2
+    # Identify pump calibration files, define initial values for temperature, stirring, volume, power settings
+    vial_volume = options.vial_volume  # mL, determined by vial cap straw length
+    ##### USER DEFINED VARIABLES #####
+    # vials is all 16, can set to different range (ex. [0,1,2,3]) to only trigger tstat on those vials
+    morbidostat_vials = vials
+    # Number of values to calculate the OD average
+    OD_values_to_average = options.to_avg
+    exp_name = options.exp_name  # Name of experiment files
+    # Lower threshold to minimize logic arising from noise
+    lower_thresh = [options.lower_threshold] * len(vials)
+    # Middle threshold
+    middle_thresh = [options.middle_threshold] * len(vials)
+    # Upper threshold
+    upper_thresh = [options.upper_threshold] * len(vials)
+    # Drug A Concentration
+    a_conc = options.a_conc
+    # Drug B Concentration
+    b_conc = options.b_conc
+    # Whether or not drug A and drug B are the same drug.
+    same_drug = options.same_drug
+    # Pump duration
+    pump_a_for = options.pump_a_for
+    pump_b_for = options.pump_b_for
+    pump_media_for = options.pump_media_for
+    suction_for = options.suction_for
+    # Cycle duration
+    pump_wait = options.pump_wait
+    # Whether drug B will be used
+    
+    ##### End of Timed Morbidostat Settings #####
+    save_path = os.path.dirname(os.path.realpath(__file__))  # save path
+    # mL/sec, read from calibration file.
+    flow_rate = eVOLVER.get_flow_rate()
+    ##### Morbidostat Control Code Below #####
+    # maximum of all pump times (to prevent overflow of vials)
+    max_time_in = 0
+    # fluidic message: initialized so that no change is sent
+    MESSAGE = ['--'] * 48
+    for x in morbidostat_vials:  # main loop through each vial
+        # initialize OD and find OD path for each vial
+        file_name = "vial{0}_OD.txt".format(x)
+        OD_path = os.path.join(save_path, exp_name, 'OD', file_name)
+        data = eVOLVER.tail_to_np(OD_path, OD_values_to_average)
+        average_OD = 0
+        # waits for seven OD measurements (couple minutes) for sliding window
+        if data.size != 0:
+            # Access pump logs to see last pump time.
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            data = np.genfromtxt(file_path, delimiter=',')
+            last_pump = data[len(data)-1][0]
+            last_average_OD = data[len(data)-1][2]
+            # if not sufficient time since last pump, skip vial.
+            if ((elapsed_time - last_pump)*60) < pump_wait:
+                continue
+            # Fetch morbidostat state for each vial.
+            file_name = "vial{0}_morbido_log.txt".format(x)
+            state_path = os.path.join(
+                save_path, exp_name, 'morbido_log', file_name)
+            state_file = open(state_path, 'r')
+            state_file_lines = state_file.read().split('\n')
+            last_n_lines = min(len(state_file_lines), 5)
+            last_n_ps = map(get_p_value, state_file_lines[-last_n_lines:])
+            last_state = state_file_lines[-1].split(',')
+            last_drug_a_conc = last_state[5]
+            last_drug_b_conc = last_state[6]
+            last_phase = last_state[7]
+            drugAllowed = last_phase is 'M'
+            state_file.close()
+            # calculate median OD
+            od_values_from_file = data[:, 1]
+            average_OD = float(np.median(od_values_from_file))
+            # PID calculations
+            p = average_OD - middle_thresh[x]
+            # i is sum of last 5 p values.
+            i = sum(last_n_ps)
+            # d is the change in ODFinals / cycle_time (hours)
+            d = (average_OD - last_average_OD) / (pump_wait / 60)
+            pid = 0.01 * i + d
+            if p > 0:
+                pid += 1e5
+            else:
+                pid -= 1e5
+            # decision tree based on OD and PID state
+            phase = "I"
+            # For pumping
+            time_in = 0
+            used_pump = None
+            # For tracking
+            drug_a_conc = last_drug_a_conc
+            drug_b_conc = last_drug_b_conc
+            if average_OD < lower_thresh[x]:
+                # Nothing; Idle due to insufficient OD.
+                phase = "I"
+            elif pid > 0 and drugAllowed:
+                if average_OD > upper_thresh[x] or (same_drug and 0.6 * a_conc):
+                    phase = "B"
+                    used_pump = b_pump
+                    time_in = pump_b_for
+                    newVolume = time_in * flow_rate
+                    drug_b_conc = (b_conc * newVolume + drug_b_conc *
+                                   vial_volume) / (newVolume + vial_volume)
+                else:
+                    phase = "A"
+                    used_pump = a_pump
+                    time_in = pump_a_for
+                    newVolume = time_in * flow_rate
+                    drug_a_conc = (a_conc * newVolume + drug_a_conc *
+                                   vial_volume) / (newVolume + vial_volume)
+                if same_drug:  # Keep concentrations equal if the same drug.
+                    if phase is "A":
+                        drug_b_conc = drug_a_conc
+                    else:
+                        drug_a_conc = drug_b_conc
+            else:
+                phase = "M"
+                used_pump = media_pump
+                time_in = pump_media_for
+                drug_a_conc = (drug_a_conc * vial_volume) / \
+                    (newVolume + vial_volume)
+                drug_b_conc = (drug_b_conc * vial_volume) / \
+                    (newVolume + vial_volume)
+            if used_pump is not None:
+                MESSAGE[used_pump * 16 + x] = time_in
+            max_time_in = max(max_time_in, time_in)
+            logger.info('morbidostat action for vial %d' % x)
+            file_name = "vial{0}_pump_log.txt".format(x)
+            file_path = os.path.join(save_path, exp_name,
+                                     'pump_log', file_name)
+            text_file = open(file_path, "a+")
+            text_file.write("{0},{1},{2}\n".format(
+                elapsed_time, time_in, average_OD))
+            text_file.close()
+        else:
+            logger.debug('not enough OD measurements for vial %d' % x)
+
+    # here lives the code that controls the suction pump
+    if max_time_in > 0:
+        MESSAGE[-1] = str(suction_for)
+
+    # send fluidic command only if we are actually turning on any of the pumps
+    if MESSAGE != ['--'] * 48:
+        eVOLVER.fluid_command(MESSAGE)
+    pass
 
 if __name__ == '__main__':
     print('Please run eVOLVER.py instead')
