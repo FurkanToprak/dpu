@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+# -*- coding: utf-8 -*-
 ##### IMPORTANT #####
 # Read the README.md file before touching this file.
 
@@ -300,6 +300,20 @@ class EvolverNamespace(BaseNamespace):
                 'immediate': True}
         logger.info('stopping all pumps')
         self.emit('command', data, namespace='/dpu-evolver')
+    
+    def test_pumps(self, pumps, pump_test_for):
+        test_values = ['0'] * 48
+        for pump in pumps:
+            values[int(pump) - 1] = pump_test_for
+        data = {'param': 'pump',
+                'value': test_values,
+                'recurring': False,
+                'immediate': True}
+        logger.info('Opening the pumps {0} for {1} seconds.'.format(
+            (str(pump), pump_test_for)
+        ))
+        self.emit('command', data, namespace='/dpu-evolver')
+        pass
 
     def _create_file(self, vial, param, directory=None, defaults=None):
         if defaults is None:
@@ -605,7 +619,7 @@ def get_options():
                            help='Disable logging to file entirely')
     # Always necessary arguments
     algo_options = ['chemostat', 'turbidostat',
-                    'morbidostat', 'timed_morbidostat', 'old_morbidostat']
+                    'morbidostat', 'timed_morbidostat', 'old_morbidostat', 'pump_test']
     parser.add_argument(
         '--algo', help='Whether you want to use ' + '/'.join(algo_options))
     parser.add_argument(
@@ -684,11 +698,29 @@ def get_options():
     parser.add_argument(
         '--use_b', help="Boolean flag to enable drug B.", type=bool
     )
+    parser.add_argument(
+        '--pump', help='Specify pump numbers in a space-seperated list. Example `py eVOLVER.py --algo pump_test --pump 1 4 8`', type=int, nargs='+'
+    )
+    parser.add_argument(
+        '--pump_test_for', help='Specify pump numbers in a space-seperated list. Example `py eVOLVER.py --algo pump_test --pump 1 4 8`', type=int, nargs='+'
+    )
     # Sanity check for required arguments
     args = parser.parse_args()
     if args.algo is None or not args.algo in algo_options:
         print('Specify algorithm within the available options.')
         exit(-1)
+    elif args.algo == 'pump_test':
+        if args.pump is None:
+            print('Specify one or more integers between [1, 48], inclusive.')
+            exit(-1)
+        else:
+            for p in args.pump:
+                if p < 1 or p > 48:
+                    print('{0} is not valid as a pump number. Select a number between 1 and 48, inclusive.'.format((p)))
+                    exit(-1)
+        if args.pump_test_for is None:
+            print('Specify a duration to pump for, in seconds.')
+            exit(-1)
     if args.exp_name is None or len(args.exp_name) == 0:
         print('Specify experiment name.')
         exit(-1)
@@ -797,9 +829,12 @@ if __name__ == '__main__':
     socketIO = SocketIO(EVOLVER_IP, EVOLVER_PORT)
     EVOLVER_NS = socketIO.define(EvolverNamespace, '/dpu-evolver')
 
-    # start by stopping any existing chemostat
+    # start by stopping any existing regime
     EVOLVER_NS.stop_all_pumps()
-    #
+    # test pumps if specified
+    if options.algo == 'pump_test':
+        EVOLVER_NS.test_pumps(options.pump, options.pump_test)
+        exit(0)
     EVOLVER_NS.start_time = EVOLVER_NS.initialize_exp(
         VIALS, options.always_yes)
 
