@@ -283,10 +283,10 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                                      'pump_log', file_name)
             data = np.genfromtxt(file_path, delimiter=',')
             last_pump = data[len(data)-1][0]
-            last_average_OD = data[len(data)-1][2]
             # if not sufficient time since last pump, skip vial.
             if ((elapsed_time - last_pump)*60) < pump_wait:
                 continue
+            last_average_OD = data[len(data)-1][2]
             # Fetch morbidostat state for each vial.
             file_name = "vial{0}_morbido_log.txt".format(x)
             state_path = os.path.join(
@@ -605,8 +605,12 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                                      'pump_log', file_name)
             data = np.genfromtxt(file_path, delimiter=',')
             last_pump = data[len(data)-1][0]
-            last_a_state = data[len(data)-1][2]
-            last_b_state = data[len(data)-1][2]
+            # if not sufficient time since last pump, skip vial.
+            if ((elapsed_time - last_pump)*60) < pump_wait:
+                continue
+            last_average_OD = data[len(data)-1][2]
+            last_a_state = data[len(data)-1][3]
+            last_b_state = data[len(data)-1][4]
             # find last time_stamp where a and b were pumped for the first time (in the last drug administration cycle).
             last_a_found = False
             last_b_found = False or not use_b
@@ -615,15 +619,16 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             for i in reversed(range(0, len(data))):
                 if last_a_found and last_b_found:
                     break
-                a_state_i = data[i][2]
-                b_state_i = data[i][3]
+                time_i = data[i][0]
+                a_state_i = data[i][3]
+                b_state_i = data[i][4]
                 if not last_a_found and a_state_i == 1:
                     last_a_found = True
+                    last_a_pump = time_i
                 if not last_b_found and b_state_i == 1:
                     last_b_found = True
-            # if not sufficient time since last pump, skip vial.
-            if ((elapsed_time - last_pump)*60) < pump_wait:
-                continue
+                    last_a_pump = time_i
+            
             # Fetch morbidostat state for each vial.
             file_name = "vial{0}_morbido_log.txt".format(x)
             state_path = os.path.join(
@@ -649,14 +654,13 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             # For tracking
             drug_a_conc = last_drug_a_conc
             drug_b_conc = last_drug_b_conc
-            #TODO: Decision
-            a_state = None
-            b_state = None
-            # if last_a_state == -1:
-            #     if init_a * 60 * 60 > elapsed_time:
-            #         # pump a
-            #         a_state = 0
-            # if freq_a * 60 * 60 >
+            # Decision Tree TODO:
+            # DRUG A
+            new_a_state = None
+            
+            # DRUG B TODO:
+            new_b_state = None
+            
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
@@ -665,8 +669,8 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             file_path = os.path.join(save_path, exp_name,
                                      'pump_log', file_name)
             text_file = open(file_path, "a+")
-            text_file.write("{0},{1},{2}\n".format(
-                elapsed_time, time_in, average_OD))
+            text_file.write("{0},{1},{2},{3},{4}\n".format(
+                elapsed_time, time_in, average_OD, new_a_state, new_b_state))
             text_file.close()
         else:
             logger.debug('not enough OD measurements for vial %d' % x)

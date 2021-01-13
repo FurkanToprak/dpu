@@ -376,10 +376,10 @@ class EvolverNamespace(BaseNamespace):
                                   defaults=[exp_str,
                                             "0,{0}".format(TEMP_INITIAL[x])])
                 # make pump log file [time, pump_duration, average (smoothed) OD].
-                # Timed morbidostat uses the third column to track states instead of smoothed OD.
+                # Timed morbidostat adds two columns to track states instead of smoothed OD.
                 self._create_file(x, 'pump_log',
                                   defaults=[exp_str,
-                                            "0,0,-1,-1" if options.algo == 'timed_morbidostat' else "0,0,0"])
+                                            "0,0,0,-1,-1" if options.algo == 'timed_morbidostat' else "0,0,0"])
                 # make ODset file
                 self._create_file(x, 'ODset',
                                   defaults=[exp_str,
