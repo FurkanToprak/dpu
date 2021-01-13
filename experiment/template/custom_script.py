@@ -226,6 +226,8 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
 def get_p_value(line): return line.split(',')[1]
 
 # Implementation of current-day morbidostat
+
+
 def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # First rack is media, second rack is drug A, third rack is drug B.
     media_pump = 0
@@ -377,6 +379,8 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
         eVOLVER.fluid_command(MESSAGE)
 
 # Subtly different from current-day morbidostat. This is a legacy version featured in some papers.
+
+
 def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # First rack is media, second rack is drug A, third rack is drug B.
     media_pump = 0
@@ -526,11 +530,14 @@ def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
         eVOLVER.fluid_command(MESSAGE)
 
 # Implementation of timed morbidostat
+
+
 def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     # Timed morbidostat holds two states simultaneously: The state for timer A and timer B.
     # State Dictionary:
     # -1: Never applied, n >= 0: Applied drug in question n times. Snaps back to 0 once n == times_a
     # First rack is media, second rack is drug A, third rack is drug B.
+    # The two states are located in the last two columns of the pump_log files.
     media_pump = 0
     a_pump = 1
     b_pump = 2
@@ -600,6 +607,20 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             last_pump = data[len(data)-1][0]
             last_a_state = data[len(data)-1][2]
             last_b_state = data[len(data)-1][2]
+            # find last time_stamp where a and b were pumped for the first time (in the last drug administration cycle).
+            last_a_found = False
+            last_b_found = False or not use_b
+            last_a_pump = None
+            last_b_pump = None
+            for i in reversed(range(0, len(data))):
+                if last_a_found and last_b_found:
+                    break
+                a_state_i = data[i][2]
+                b_state_i = data[i][3]
+                if not last_a_found and a_state_i == 1:
+                    last_a_found = True
+                if not last_b_found and b_state_i == 1:
+                    last_b_found = True
             # if not sufficient time since last pump, skip vial.
             if ((elapsed_time - last_pump)*60) < pump_wait:
                 continue
@@ -635,7 +656,7 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             #     if init_a * 60 * 60 > elapsed_time:
             #         # pump a
             #         a_state = 0
-            # if freq_a * 60 * 60 > 
+            # if freq_a * 60 * 60 >
             if used_pump is not None:
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
@@ -658,6 +679,7 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
     if MESSAGE != ['--'] * 48:
         eVOLVER.fluid_command(MESSAGE)
     pass
+
 
 if __name__ == '__main__':
     print('Please run eVOLVER.py instead')

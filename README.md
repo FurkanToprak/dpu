@@ -93,6 +93,9 @@ python3.6 calibration/calibrate.py -a <ip_address> -n <file_name> -t linear -f <
 
 ### List raw OD JSON files logged on evolver 
 
+#### Beware
+Make sure to follow through the entire calibration prompt. Once the graphs are closed, the command line will prompt you to update the calibrations on the eVOLVER machine. Select `yes`.
+
 #### OD135
 ```sh
 python3.6 calibration/calibrate.py -a <ip_address> -n <file_name> -t sigmoid -f <name_after_fit> -p od_135
