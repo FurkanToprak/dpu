@@ -379,7 +379,7 @@ class EvolverNamespace(BaseNamespace):
                 # Timed morbidostat adds two columns to track states instead of smoothed OD.
                 self._create_file(x, 'pump_log',
                                   defaults=[exp_str,
-                                            "0,0,0,-1,-1" if options.algo == 'timed_morbidostat' else "0,0,0"])
+                                            "0,0,0,0,0" if options.algo == 'timed_morbidostat' else "0,0,0"])
                 # make ODset file
                 self._create_file(x, 'ODset',
                                   defaults=[exp_str,
