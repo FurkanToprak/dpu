@@ -204,7 +204,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                     logger.info('turbidostat dilution for vial %d' % x)
                     # media pump
                     MESSAGE[x] = str(time_in)
-
+                    # Save last pump action
                     file_name = "vial{0}_pump_log.txt".format(x)
                     file_path = os.path.join(
                         save_path, EXP_NAME, 'pump_log', file_name)
@@ -360,6 +360,7 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
             logger.info('morbidostat action for vial %d' % x)
+            # Save last pump action
             file_name = "vial{0}_pump_log.txt".format(x)
             file_path = os.path.join(save_path, exp_name,
                                      'pump_log', file_name)
@@ -367,6 +368,15 @@ def morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             text_file.write("{0},{1},{2}\n".format(
                 elapsed_time, time_in, average_OD))
             text_file.close()
+            # Save morbidostat state for each vial.
+            file_name = "vial{0}_morbido_log.txt".format(x)
+            state_path = os.path.join(
+                save_path, exp_name, 'morbido_log', file_name)
+            state_file = open(state_path, 'a+')
+            # time, p, i, d, pid, drug a conc., drug b conc., phase
+            state_file.write("{0},{1},{2},{3},{4},{5},{6},{7}\n".format(
+                (elapsed_time, p, i, d, pid, drug_a_conc, drug_b_conc, phase)
+            )) 
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
 
@@ -511,6 +521,7 @@ def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
                 MESSAGE[used_pump * 16 + x] = time_in
             max_time_in = max(max_time_in, time_in)
             logger.info('old morbidostat action for vial %d' % x)
+            # Save pump actions for each vial
             file_name = "vial{0}_pump_log.txt".format(x)
             file_path = os.path.join(save_path, exp_name,
                                      'pump_log', file_name)
@@ -518,6 +529,15 @@ def old_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             text_file.write("{0},{1},{2}\n".format(
                 elapsed_time, time_in, average_OD))
             text_file.close()
+            # Save morbidostat state for each vial.
+            file_name = "vial{0}_morbido_log.txt".format(x)
+            state_path = os.path.join(
+                save_path, exp_name, 'morbido_log', file_name)
+            state_file = open(state_path, 'a+')
+            # time, p, i, d, pid, drug a conc., drug b conc., phase
+            state_file.write("{0},{1},{2},{3},{4},{5},{6},{7}\n".format(
+                (elapsed_time, p, i, d, pid, drug_a_conc, drug_b_conc, phase)
+            ))           
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
 
@@ -657,7 +677,8 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             # Decision Tree TODO:
             # DRUG A
             new_a_state = None
-            
+            if last_a_state == 0 and average_OD < lower_thresh[x]:
+                new_a_state = 0
             # DRUG B TODO:
             new_b_state = None
             
@@ -672,6 +693,15 @@ def timed_morbidostat(eVOLVER, input_data, vials, elapsed_time, options):
             text_file.write("{0},{1},{2},{3},{4}\n".format(
                 elapsed_time, time_in, average_OD, new_a_state, new_b_state))
             text_file.close()
+            # Save morbidostat state for each vial.
+            file_name = "vial{0}_morbido_log.txt".format(x)
+            state_path = os.path.join(
+                save_path, exp_name, 'morbido_log', file_name)
+            state_file = open(state_path, 'a+')
+            # time, p, i, d, pid, drug a conc., drug b conc., phase TODO:
+            state_file.write("{0},{1},{2},{3},{4},{5},{6},{7}\n".format(
+                (elapsed_time, p, i, d, pid, drug_a_conc, drug_b_conc, phase)
+            )) 
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
 
